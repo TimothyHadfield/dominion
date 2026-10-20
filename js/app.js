@@ -21,7 +21,18 @@
   const store = (function () {
     try {
       const s = JSON.parse(localStorage.getItem(KEY));
-      if (s && s.v === 1) return Object.assign(fresh(), s, { settings: Object.assign(fresh().settings, s.settings || {}) });
+      if (s && s.v === 1) {
+        const out = Object.assign(fresh(), s, { settings: Object.assign(fresh().settings, s.settings || {}) });
+        // saved data can be old or hand-edited: snap every setting back into its allowed values
+        const st = out.settings, def = fresh().settings;
+        if (![1, 2, 3].includes(st.opps)) st.opps = def.opps;
+        if (!['easy', 'medium', 'hard'].includes(st.level)) st.level = def.level;
+        if (![1, 2, 'mix'].includes(st.edition)) st.edition = def.edition;
+        st.odds = st.odds !== false; st.hints = st.hints !== false;
+        if (!out.plans || typeof out.plans !== 'object') out.plans = {};
+        if (out.kingdom != null && (!Array.isArray(out.kingdom) || out.kingdom.length !== 10 || out.kingdom.some(c => !CARDS[c]))) out.kingdom = null;
+        return out;
+      }
     } catch (e) { /* private mode or bad JSON: start fresh */ }
     return fresh();
   })();
