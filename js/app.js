@@ -211,8 +211,11 @@
   if (FXON) { FX.init({ game: 'dominion', accent: '#6ea8fe', onChange: fxClasses }); DomFx.defineSounds(FX); fxClasses(); }
   const fxErr = () => { if (FXON) FX.play('error'); };
   const fxDom = {
-    tile: n => vPlay.querySelector('[data-tile="' + n + '"]'),
-    deck: () => $('.odds', vPlay),
+    // the pile's top card, with its size fixed inline so a flying copy keeps it outside the Supply
+    tile: n => { const c = vPlay.querySelector('[data-tile="' + n + '"] > .cf'); if (c) c.style.setProperty('--cw', c.offsetWidth + 'px'); return c; },
+    deck: () => $('.mdeck', vPlay) || $('.odds', vPlay),
+    discard: () => $('.dpile', vPlay),
+    pile: s => $('[data-seatbox="' + s + '"] .sdisc', vPlay),
     chip: s => $('[data-chip="' + s + '"]', vPlay),
     chipVP: s => $('[data-chip="' + s + '"] b', vPlay),
     coins: () => $('[data-ctr="coins"]', vPlay),
@@ -231,14 +234,26 @@
     if (t.indexOf('Victory') >= 0) return 'Victory';
     return 'Action';
   }
+  // A card laid out like the printed one: name banner, picture, text box, type banner, cost coin bottom-left.
+  // Treasures show their value on a big coin and Victory cards their points, as the real cards do.
+  function cardText(name) {
+    const c = CARDS[name];
+    if (c.coin) return '<span class="big coinv">' + c.coin + '</span>';
+    if (c.vp) return '<span class="big">' + c.vp + '</span>';
+    const t = c.text, i = t.indexOf('. ');
+    const first = (i >= 0 ? t.slice(0, i) : t).replace(/\.$/, '');
+    if (first[0] !== '+') return '<span>' + esc(t) + '</span>';
+    const rest = i >= 0 ? t.slice(i + 2) : '';
+    return first.split(', ').map(x => '<b>' + esc(x) + '</b>').join('') + (rest ? '<span class="rule"></span><span>' + esc(rest) + '</span>' : '');
+  }
+  const nameCls = n => (n.length > 10 ? ' l3' : n.length > 7 ? ' l2' : '');
   function face(name, o) {
     o = o || {};
     const c = CARDS[name];
     const cls = ['cf', mainType(name), o.size || '', o.cls || ''].join(' ');
-    return '<div class="' + cls + '"' + (o.attr || '') + ' style="' + (o.delay ? 'animation-delay:' + o.delay + 'ms' : '') + '">' +
-      '<div class="nm">' + esc(name) + '</div>' + DomArt.svg(name) +
-      (o.size === 'big' ? '<div class="tx">' + esc(c.text) + '</div>' : '') +
-      '<div class="ft"><span class="cost">' + c.cost + '</span><span>' + esc(c.types.join(' · ').replace('Action · ', '')) + '</span></div></div>';
+    return '<div class="' + cls + '"' + (o.attr || '') + (o.style ? ' style="' + o.style + '"' : '') + '>' +
+      '<div class="nm' + nameCls(name) + '">' + esc(name) + '</div>' + DomArt.svg(name) +
+      '<div class="tx">' + cardText(name) + '</div><div class="ty">' + esc(c.types.join(' – ')) + '</div><span class="cost">' + c.cost + '</span></div>';
   }
   // red -> green for "good" numbers (tight range given per use)
   function heat(x, lo, hi) {
@@ -322,7 +337,11 @@
 
   // ================================================================== PLAY
   const vPlay = $('#v-play');
-  function renderPlay() { if (table) renderGame(); else if (ui.online) renderOnline(); else renderSetup(); }
+  function renderPlay() {
+    vPlay.classList.toggle('ingame', !!table);
+    if (!table) dropFans();
+    if (table) renderGame(); else if (ui.online) renderOnline(); else renderSetup();
+  }
 
   function renderOnline() {
     const s = net.snap;
@@ -638,14 +657,54 @@
     return '<ul class="log">' + (items || '<li>Nothing yet.</li>') + '</ul>';
   }
 
+  // ------------------------------------------------------------------ the table (js/table.js draws decks, piles and fans)
+  let fans = [];
+  function dropFans() { fans.forEach(f => f && f.disconnect && f.disconnect()); fans = []; }
+  const backHTML = () => TABLE.back({ cls: 'dom-back' });
+  const motionMs = ms => Math.round(ms * (FXON && FX.settings.animSpeed === 'fast' ? 0.55 : 1));
+  // A card flies from `from` (a deck, a seat) to its place, turning face up on the way (a 3-D turn).
+  function flipFly(from, to, name, delay, faceUp) {
+    if (!to || !from || !window.TABLE || !TABLE.animOn()) return;
+    to.classList.add('dealing');
+    const reveal = () => to.classList.remove('dealing');
+    const safety = setTimeout(reveal, delay + 1500);
+    setTimeout(() => {
+      if (!to.isConnected || !from.isConnected) { clearTimeout(safety); reveal(); return; }
+      const a = from.getBoundingClientRect(), b = to.getBoundingClientRect();
+      const w = to.offsetWidth, h = to.offsetHeight, r = parseFloat(to.style.getPropertyValue('--r')) || 0;
+      const g = document.createElement('div');
+      g.className = 'dealghost';
+      g.style.cssText = 'left:' + (b.left + b.width / 2 - w / 2) + 'px;top:' + (b.top + b.height / 2 - h / 2) + 'px;width:' + w + 'px;height:' + h + 'px';
+      const d = motionMs(320), turn = motionMs(260);
+      g.innerHTML = '<div class="dg-in' + (faceUp ? ' up' : '') + '" style="transition-duration:' + turn + 'ms">' + face(name, { style: '--cw:' + w + 'px' }) + backHTML() + '</div>';
+      document.body.appendChild(g);
+      const dx = a.left + a.width / 2 - (b.left + b.width / 2), dy = a.top + a.height / 2 - (b.top + b.height / 2);
+      const s = Math.max(0.2, Math.min(1.2, a.width / (b.width || 1)));
+      try { g.animate([{ transform: 'translate(' + dx + 'px,' + dy + 'px) scale(' + s + ')' }, { transform: 'rotate(' + r + 'deg)' }], { duration: d, easing: 'cubic-bezier(.3,.7,.3,1)', fill: 'forwards' }); } catch (e) { /* old browser: no flight */ }
+      const inner = g.firstChild;
+      if (faceUp) inner.classList.add('half');
+      setTimeout(() => { inner.classList.add('up'); setTimeout(() => inner.classList.add('half'), Math.round(turn / 2)); }, Math.round(d * 0.3));
+      setTimeout(() => { g.remove(); clearTimeout(safety); reveal(); }, Math.max(d, Math.round(d * 0.3) + turn) + 20);
+    }, delay);
+  }
+  // A card already face up slides from where it was (my hand) to where it is now (the play area).
+  function slideIn(el, rect) {
+    if (!el || !rect || !window.TABLE || !TABLE.animOn() || !el.animate) return;
+    const b = el.getBoundingClientRect();
+    const dx = rect.left + rect.width / 2 - (b.left + b.width / 2), dy = rect.top + rect.height / 2 - (b.top + b.height / 2);
+    const s = Math.max(0.3, Math.min(3, rect.width / (b.width || 1)));
+    el.classList.remove('popin');
+    try { el.animate([{ transform: 'translate(' + dx + 'px,' + dy + 'px) scale(' + s + ') rotate(-4deg)' }, { transform: 'none' }], { duration: motionMs(300), easing: 'cubic-bezier(.3,.7,.3,1)' }); } catch (e) { /* ignore */ }
+  }
+
   function renderGame() {
     const v = table.view(ME);
     // online: the private half of a snapshot (my hand) can land a moment after the public half
-    if (!v || !v.me) { vPlay.innerHTML = '<div class="setup"><p class="muted">Connecting…</p></div>'; return; }
+    if (!v || !v.me) { dropFans(); vPlay.innerHTML = '<div class="setup"><p class="muted">Connecting…</p></div>'; return; }
     const p = v.pending;
     const s = store.settings;
-    const handEl = $('.hand', vPlay);
-    const keepScroll = handEl ? handEl.scrollLeft : 0;
+    // where my hand cards were, so a played card can slide from there onto the table
+    const oldHand = Array.from(vPlay.querySelectorAll('.hand > .cf')).map(e => ({ name: e.dataset.card, r: e.getBoundingClientRect() }));
     // animation bookkeeping: whole hand deals in at the start of a new turn of mine
     const myTurns = v.turns.filter(t => t.seat === ME).length;
     const newTurn = myTurns !== ui.prevTurns;
@@ -663,28 +722,38 @@
     }
     const dealAt = fxPlan ? fxPlan.dealAt : 0, dealGap = FXON && FX.settings.animSpeed === 'fast' ? 33 : 60;
 
-    // status
+    // opponents round the far side: name plate, cards in hand (backs), deck, discard pile
     const order = [];
     for (let k = 0; k < v.players.length; k++) order.push(v.players[k]);
     const away = i => !!(table.online && table.snap.seats && table.snap.seats[i] && !table.snap.seats[i].online);
-    const chips = order.map(pl => '<span class="chip' + (pl.seat === v.cur && !v.over ? ' turn' : '') + (away(pl.seat) ? ' off' : '') + '" data-chip="' + pl.seat + '"><span class="dot" style="background:' + COLORS[pl.seat % 4] + '"></span><span class="nmx">' + esc(pl.name) + '</span> <b>' + pl.vp + '</b></span>').join('');
+    const plate = pl => '<div class="tbl-plate' + (pl.seat === v.cur && !v.over ? ' turn' : '') + (away(pl.seat) ? ' off' : '') + '" data-chip="' + pl.seat + '"><span class="dot" style="background:' + COLORS[pl.seat % 4] + '"></span><span class="nmx">' + esc(pl.name) + '</span><b>' + pl.vp + '</b></div>';
+    const others = [];
+    for (let k = 1; k < order.length; k++) others.push(order[(ME + k) % order.length]); // clockwise from my left
+    const seatsHTML = others.map(pl => '<div class="seat" data-seatbox="' + pl.seat + '">' + plate(pl) +
+      '<div class="things"><div class="sdeck" data-n="' + pl.drawSize + '"></div><div class="sfan" data-n="' + pl.handSize + '"></div>' +
+      '<div class="sdisc' + (pl.discardTop ? '' : ' tbl-spot') + '">' + (pl.discardTop ? face(pl.discardTop, { size: 'xs' }) : '') + '</div></div></div>').join('');
     const empty = Object.keys(v.supply).filter(k => v.supply[k] === 0).length;
-    const status = '<div class="status"><div class="chips">' + chips +
-      '<span class="chip" title="Provinces left" data-chip="prov">Prov <b>' + v.supply.Province + '</b></span>' +
-      (empty ? '<span class="chip" style="border-color:' + (empty >= 2 ? 'var(--bad)' : 'var(--line)') + '">Empty <b>' + empty + '</b></span>' : '') + '</div>' +
+    const emptyTag = empty ? '<span class="emptytag' + (empty >= 2 ? ' warn' : '') + '">Empty ' + empty + '</span>' : '';
+    const opps = '<div class="opps"><div class="oppseats">' + seatsHTML + '</div>' + emptyTag +
       '<button class="icon-btn" id="btn-sheet-log" data-btn="log" aria-label="Log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>' +
       '<button class="icon-btn" data-btn="quit" aria-label="Quit game"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>';
 
-    // supply
-    const basics = ['Copper', 'Silver', 'Gold', 'Estate', 'Duchy', 'Province', 'Curse'];
-    const names = basics.concat(v.kingdom.slice().sort(byCost));
+    // the Supply: basic piles grouped (Treasures, Curse, Victory, Trash), Kingdom in two rows of five by cost
     const hint = s.hints && p && p.kind === 'buy' ? (v.turns[v.turns.length - 1].suggest || []) : [];
-    const supply = '<div class="supply">' + names.map(n => {
-      const allowed = tileAllowed(n, v, p);
-      const cls = ['tile', mainType(n), v.supply[n] === 0 ? 'empty' : '', allowed ? 'can' : (p && (p.kind === 'buy' || p.kind === 'gain') ? 'dim' : ''),
-        ui.sel === n && ui.selHand < 0 ? 'sel' : '', hint.indexOf(n) >= 0 ? 'hint' : ''].join(' ');
-      return '<div class="' + cls + '" data-tile="' + esc(n) + '">' + DomArt.svg(n) + '<span class="cost">' + CARDS[n].cost + '</span><span class="cnt">' + v.supply[n] + '</span><div class="tn">' + esc(n) + '</div></div>';
-    }).join('') + '</div>';
+    const pileHTML = n => {
+      const allowed = tileAllowed(n, v, p), cnt = v.supply[n];
+      const fcls = [allowed ? 'can' : (p && (p.kind === 'buy' || p.kind === 'gain') ? 'dim' : ''), ui.sel === n && ui.selHand < 0 ? 'sel' : ''].join(' ');
+      const st = TABLE.stackShadow(cnt, { perCard: 0.5, max: 5 });
+      const style = cnt ? 'box-shadow:' + st.shadow + ';transform:translateY(-' + st.thickness + 'px)' : '';
+      return '<div class="pile' + (cnt === 0 ? ' empty' : '') + (hint.indexOf(n) >= 0 ? ' hint' : '') + '" data-tile="' + esc(n) + '"' + (n === 'Province' ? ' data-chip="prov"' : '') + '>' +
+        face(n, { size: 'xs', cls: fcls, style }) + '<span class="cnt">' + cnt + '</span></div>';
+    };
+    const trashNames = Object.keys(v.trash);
+    const trashN = trashNames.reduce((a, c) => a + v.trash[c], 0);
+    const trash = '<div class="pile trash" data-btn="deck"><span class="lbl">Trash</span>' + (trashN ? face(trashNames[trashNames.length - 1], { size: 'xs' }) + '<span class="cnt">' + trashN + '</span>' : '') + '</div>';
+    const supply = '<div class="supply"><div class="sup"><div class="basics">' + ['Copper', 'Silver', 'Gold', 'Curse', 'Estate', 'Duchy', 'Province'].map(pileHTML).join('') + trash + '</div>' +
+      '<div class="kingdom">' + v.kingdom.slice().sort(byCost).map(pileHTML).join('') + '</div></div>' +
+      '</div>';
 
     // info
     let p1 = '', p2 = '', mine = false;
@@ -708,19 +777,22 @@
       const c = CARDS[ui.sel];
       p2 = '<b>' + esc(ui.sel) + '</b> · $' + c.cost + ' · ' + esc(c.text) + (v.supply[ui.sel] != null ? ' <span>(' + v.supply[ui.sel] + ' left)</span>' : '');
     }
-    const infoCard = ui.sel && CARDS[ui.sel] ? face(ui.sel, { size: 'big' }) : '';
-    const info = '<div class="info' + (mine ? ' mine' : '') + '"><div class="info-card">' + infoCard + '</div><div class="grow"><div class="p1">' + p1 + '</div><div class="p2">' + p2 + '</div></div></div>';
+    const infoCard = ui.sel && CARDS[ui.sel] ? face(ui.sel, { size: 'big' }) : '<div class="spot">Tap a card</div>';
+    const info = '<div class="info' + (mine ? ' mine' : '') + '"><div class="p1">' + p1 + '</div><div class="p2">' + p2 + '</div></div>';
 
-    // tray: a choice list, or the cards in play + counters
-    let tray;
+    // the play area in front of whoever's turn it is (or the cards to choose from)
+    let playRow;
     if (p && p.kind === 'pickList') {
-      tray = '<div class="tray"><div class="cards">' + p.cards.map((c, i) => face(c, {
-        size: 'mini', cls: (ui.picks.indexOf(i) >= 0 ? 'sel' : '') + (p.only && p.only.indexOf(i) < 0 ? ' dim' : ' can'), attr: ' data-list="' + i + '"',
+      playRow = '<div class="play"><div class="cards pick">' + p.cards.map((c, i) => face(c, {
+        size: 'xs', cls: (ui.picks.indexOf(i) >= 0 ? 'sel' : '') + (p.only && p.only.indexOf(i) < 0 ? ' dim' : ' can'), attr: ' data-list="' + i + '"',
       })).join('') + '</div><span class="cap">Pick</span></div>';
     } else {
       const who = v.cur === ME ? 'You' : v.players[v.cur].name;
-      tray = '<div class="tray"><div class="cards">' + (play.length ? play.map((c, i) => face(c, { size: 'mini', cls: i >= playFrom ? 'popin' : '' })).join('') : '<span class="cap">' + esc(who) + ': nothing in play</span>') + '</div>' +
-        '<div class="counters"><span>Actions <b>' + (v.cur === ME ? v.actions : '–') + '</b></span><span>Buys <b>' + (v.cur === ME ? v.buys : '–') + '</b></span><span>$ <b data-ctr="coins">' + (v.cur === ME ? v.coins : '–') + '</b></span></div></div>';
+      const mineT = v.cur === ME;
+      playRow = '<div class="play"><div class="cards">' + (play.length ? play.map((c, i) => face(c, { size: 'xs', cls: i >= playFrom ? 'popin' : '', attr: ' data-pi="' + i + '"' })).join('') : '<span class="cap">' + esc(who) + ': nothing in play</span>') + '</div>' +
+        '<div class="counters"><div class="ctr"><span class="tbl-token">' + (mineT ? v.actions : '–') + '</span>Actions</div>' +
+        '<div class="ctr"><span class="tbl-token">' + (mineT ? v.buys : '–') + '</span>Buys</div>' +
+        '<div class="ctr"><span class="tbl-coin">$<b data-ctr="coins">' + (mineT ? v.coins : '–') + '</b></span>&nbsp;</div></div></div>';
     }
 
     // odds
@@ -729,16 +801,30 @@
       const o = oddsCells(v);
       odds = '<div class="odds" data-btn="deck"><span class="label">Next hand</span><div class="cells">' + o.cells + '</div>' +
         '<span class="deck">Deck ' + v.players[ME].total + ' · draw ' + v.me.drawSize + '</span>' +
-        qBtn('Chance your next 5-card hand has at least this much money from Treasures, worked out exactly from what is left in your draw pile (and your discard pile if you will reshuffle). Action cards can add more. Tap the bar for your deck.') + '</div>';
-    } else odds = '<div class="odds" data-btn="deck"><span class="label">Deck</span><span class="deck grow">' + v.players[ME].total + ' cards · draw ' + v.me.drawSize + ' · discard ' + Object.values(v.me.discardCounts).reduce((a, b) => a + b, 0) + '</span></div>';
+        emptyTag + qBtn('Chance your next 5-card hand has at least this much money from Treasures, worked out exactly from what is left in your draw pile (and your discard pile if you will reshuffle). Action cards can add more. Tap the bar for your deck.') + '</div>';
+    } else odds = '<div class="odds" data-btn="deck"><span class="label">Deck</span><span class="deck grow">' + v.players[ME].total + ' cards · draw ' + v.me.drawSize + ' · discard ' + Object.values(v.me.discardCounts).reduce((a, b) => a + b, 0) + '</span>' + emptyTag + '</div>';
 
-    // hand
-    const hand = '<div class="hand">' + (v.me.hand.length ? v.me.hand.map((c, i) => {
+    // my seat: deck on the left, my hand held as a fan, discard pile on the right
+    const meP = v.players[ME];
+    const under = Math.min(3, Math.max(0, meP.discardSize - 1));
+    let pileIn = '';
+    for (let k = 0; k < under; k++) {
+      const j = TABLE.jitter('disc' + ME, meP.discardSize - 1 - k, { rot: 9, off: 3 });
+      pileIn += '<div class="under" style="transform:translate(' + j.x + 'px,' + j.y + 'px) rotate(' + j.r + 'deg)"></div>';
+    }
+    if (meP.discardTop) {
+      const j = TABLE.jitter('disc' + ME, meP.discardSize, { rot: 6, off: 2 });
+      pileIn += face(meP.discardTop, { size: 'xs', style: 'transform:translate(' + j.x + 'px,' + j.y + 'px) rotate(' + j.r + 'deg)' }) + '<span class="tbl-badge">' + meP.discardSize + '</span>';
+    }
+    const meRow = '<div class="me"><div class="mine-deck"><div class="mdeck" data-btn="deck"></div>' + plate(meP) + '</div>' +
+      '<div class="hand"></div>' +
+      '<div class="mine-disc"><div class="dpile' + (meP.discardSize ? '' : ' is-empty') + '" data-btn="deck">' + pileIn + '</div></div></div>';
+    const handCards = v.me.hand.map((c, i) => {
       const allowed = handAllowed(i, v, p);
       const picked = (p && p.kind === 'pickHand' && ui.picks.indexOf(i) >= 0) || ui.selHand === i;
       const dim = p && (p.kind === 'pickHand' || p.kind === 'action') && !allowed;
-      return face(c, { cls: (allowed ? 'can ' : '') + (picked ? 'sel ' : '') + (dim ? 'dim ' : '') + (i >= handFrom ? 'deal' : ''), attr: ' data-hand="' + i + '"', delay: i >= handFrom ? dealAt + (i - handFrom) * dealGap : 0 });
-    }).join('') : '<span class="muted" style="font-size:13px;padding:0 4px 40px">' + (v.cur === ME && v.phase === 'buy' ? 'Your Treasures are in play.' : 'No cards in hand.') + '</span>') + '</div>';
+      return face(c, { cls: (allowed ? 'can ' : '') + (picked ? 'sel ' : '') + (dim ? 'dim' : ''), attr: ' data-hand="' + i + '" data-card="' + esc(c) + '"' });
+    });
 
     // buttons
     let acts = '';
@@ -770,14 +856,42 @@
         }
       }
     }
-    const side = '<div id="g-side"><div class="panel deckbox"><div class="row" style="margin-bottom:6px"><span class="label grow">Your deck</span>' +
+    const side = '<div id="g-side"><div class="panel cardbox">' + infoCard + '</div>' +
+      '<div class="panel deckbox"><div class="row" style="margin-bottom:6px"><span class="label grow">Your deck</span>' +
       qBtn('Draw = still in your draw pile (you know what, not the order). Discard = waiting for the next reshuffle. Hand = in your hand or in play this turn.') +
       '</div><div class="scroll">' + deckHTML(v) + '</div></div>' +
       '<div class="panel logbox"><div class="label" style="margin-bottom:6px">What happened</div><div class="scroll">' + logHTML(v) + '</div></div></div>';
 
-    vPlay.innerHTML = '<div id="game">' + status + supply + info + tray + odds + hand + '<div class="acts">' + acts + '</div>' + side + '</div>';
-    const h2 = $('.hand', vPlay);
-    if (h2 && !newTurn) h2.scrollLeft = keepScroll;
+    dropFans();
+    vPlay.innerHTML = '<div id="game"><div id="table" class="tbl-surface tbl-wood-dark">' + opps + supply + info + playRow + meRow +
+      '<div class="bottom">' + odds + '<div class="acts">' + acts + '</div></div></div>' + side + '</div>';
+
+    // decks, hands of card backs and my hand fan (js/table.js)
+    vPlay.querySelectorAll('.sdeck').forEach(el => TABLE.deck(el, Number(el.dataset.n), { cls: 'dom-back', perCard: 0.2, max: 5 }));
+    vPlay.querySelectorAll('.sfan').forEach(el => {
+      const n = Number(el.dataset.n);
+      fans.push(TABLE.fan(el, new Array(n).fill(0).map(backHTML), { backs: true, spread: 0.32, maxRot: 16 }));
+    });
+    const deckEl = $('.mdeck', vPlay);
+    TABLE.deck(deckEl, v.me.drawSize, { cls: 'dom-back', perCard: 0.3, max: 8 });
+    const handEl = $('.hand', vPlay);
+    if (handCards.length) fans.push(TABLE.fan(handEl, handCards, { pick: false, spread: 0.94, maxRot: 9, lift: 0 }));
+    else handEl.innerHTML = '<span class="none">' + (v.cur === ME && v.phase === 'buy' ? 'Your Treasures are in play.' : 'No cards in hand.') + '</span>';
+
+    // physical motion: new hand cards are dealt off my deck and turn face up; played cards slide out of my hand
+    const handEls = handEl.querySelectorAll('.cf');
+    for (let i = handFrom; i < handEls.length; i++) flipFly(deckEl.querySelector('.tbl-back') || deckEl, handEls[i], v.me.hand[i], dealAt + (i - handFrom) * dealGap);
+    const used = {};
+    vPlay.querySelectorAll('.play .cards .cf.popin').forEach(el => {
+      const name = CARDS[el.querySelector('.nm').textContent] ? el.querySelector('.nm').textContent : null;
+      if (v.cur === ME) {
+        const k = oldHand.findIndex((h, j) => !used[j] && h.name === name);
+        if (k >= 0) { used[k] = true; slideIn(el, oldHand[k].r); }
+      } else {
+        const seatFan = $('[data-seatbox="' + v.cur + '"] .sfan', vPlay);
+        if (seatFan && name) { el.classList.remove('popin'); flipFly(seatFan, el, name, 0); }
+      }
+    });
     if (fxPlan && fxPlan.steps.length) {
       DomFx.react(fxPlan, FX, fxDom, { me: ME, seats: v.players.map(pl => pl.seat), colors: [COLORS[ME % 4], '#f0b354', '#6ee7a8', '#e8eaf0', '#6ea8fe'] });
     }

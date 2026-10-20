@@ -188,7 +188,8 @@
     if (s.sound) FX.play(s.sound, { vol: s.vol });
     switch (e.type) {
       case 'buy': case 'gain': case 'province': case 'steal': {
-        const from = get(dom, 'tile', e.card), to = e.seat === me ? get(dom, 'deck') : get(dom, 'chip', e.seat);
+        // bought and gained cards land on the discard pile, as on the real table
+        const from = get(dom, 'tile', e.card), to = e.seat === me ? (get(dom, 'discard') || get(dom, 'deck')) : (get(dom, 'pile', e.seat) || get(dom, 'chip', e.seat));
         if (from && to && e.type !== 'steal') FX.flyTo(from, to, { fade: true, duration: 460 });
         const d = vpOf(e.card);
         if (d) FX.floatText(get(dom, 'chip', e.seat), (d > 0 ? '+' : '') + d, d > 0 ? 'var(--good)' : 'var(--bad)');

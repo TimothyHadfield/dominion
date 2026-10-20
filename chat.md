@@ -25,3 +25,9 @@
 - **Verified:** 13 fx tests (seen failing first: module missing, then a win/lose swap failed 3), 26 engine + 7 online pass. WebKit: full games (1 and 3 opponents, storage blocked) with no console errors, no scroll/overflow, no overlays left; shots of Settings, mid-game buy, win (star burst, VP count-up, confetti) at 393px + desktop (scratchpad design/dominion-fx/).
 - **Open:** hearing it on a real iPhone; online fx in two live browsers.
 
+## 2026-10-20 — real-table look
+- **Asked:** make the game look like the real card layout on a real table, "like you're looking through a camera that is connected to a user's glasses" (manager brief, all games).
+- **Built:** index.html game CSS rewritten (wood table, real Supply layout, stacked piles, real-proportion card faces + navy back, my deck/hand fan/discard at the bottom, opponents across the top, laptop side panel for big card/deck table/log); app.js renderGame rewritten + deal/flip/slide motion; dom-fx.js buys fly to the discard; css/table.css + js/table.js (copies of _table); js/fx.js recopied (1.0.3).
+- **Verified:** 26 engine + 13 fx + 7 online tests pass. WebKit shots of setup/mid/late/end at 393x659, 320x568, 659x393, 1280x800, 1280x680: no console errors, no page scroll, no horizontal overflow on the table (scratchpad table/dominion/before|after). Motion script: ghosts deal and turn, nothing left hidden afterwards, play and buy land in the right place, phone + desktop.
+- **Open:** independent reviewer agent not run (sub-agent limit); real iPhone look.
+
