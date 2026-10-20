@@ -12,3 +12,9 @@
 - **Built:** CSS polish in index.html (laptop table, phone hand, SE rule, dark select, tiles, kingdom, settings); app.js `pop`→`popin` (played cards were taking the help bubble's style and could vanish on a tap).
 - **Verified:** before/after WebKit shots of 9 states x phone/laptop (scratchpad design/dominion/), no page scroll or overflow; tray bug shown on old (3→2 cards after a tap) and fixed (3→3); 26 + 7 tests pass.
 - **Open:** real iPhone look.
+
+## 2026-10-20 — card art fix
+- **Asked:** "the map of the US in TTR looks nothing like the US. Fix this and any other similar problems accross the games" (manager brief: Province art read as a blank wall).
+- **Built:** js/art.js: Province = castle (two blue-coned towers, keep, red flags, gate, path, two hills); Harbinger (horn) and Poacher (bow + rabbit) re-centred so the tiles' crop no longer hides them. art.js?v=2.
+- **Verified:** 26 + 7 tests pass; WebKit 393px + desktop game shots and art gallery incl. greyed tiles (scratchpad design/dominion-art/before|after); no overflow or console errors.
+- **Open:** real iPhone look.

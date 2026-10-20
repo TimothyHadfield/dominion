@@ -2,7 +2,7 @@
 
 ## START HERE
 Read order: this file → CLAUDE.md → docs/rules-check.md → docs/ideas.md → chat.md.
-Last updated: 2026-10-20 (visual design pass).
+Last updated: 2026-10-20 (Province art fix).
 Live: https://timothyhadfield.github.io/dominion/ · Repo: https://github.com/TimothyHadfield/dominion
 
 ## Goal right now
@@ -19,6 +19,7 @@ Dominion base game (1st + 2nd edition) vs 1–3 computers or online friends, wit
 | Online rooms (shared `_online` module, Firebase `th-board-games`) | Done. Two-browser test passed: create, join, play to the end, reload mid-game, host leave. 7 online tests. |
 | Rules check with sources | Done: docs/rules-check.md. |
 | Design pass (2026-10-20) | Done: laptop supply tiles fill the column as tall cards, info box fixed height, bigger hand; phone hand 68x100; SE short-screen rule; dark select; tray "pop" class bug fixed. |
+| Art fix (2026-10-20) | Province redrawn as a castle on hills (house → manor → castle trio); Harbinger and Poacher redrawn (subjects were cropped off the tiles). Others checked, fine. art.js?v=2. |
 | QA pass (2026-10-19, scratchpad dom-qa.mjs) | 15 edition × seats × level games played to the end with a reload mid-game; 6 kinds of corrupt saved data; 60 fast taps; hash/back. One bug found and fixed (saved opps 99 → 99 computers; settings now clamped on load). |
 
 ## Standing instructions (Tim's words)
@@ -37,6 +38,7 @@ Dominion base game (1st + 2nd edition) vs 1–3 computers or online friends, wit
 - Online snapshots can arrive with `mine` empty for a moment; renderGame shows "Connecting…" then.
 - Local test servers used ports 8231 and 8467. Old servers from past sessions still hold 8231 and serve stale files: use a fresh port (8793 on 10-20) and curl it first.
 - `.pop` is the help bubble's class and the bubble code removes any `.pop` on click. Never reuse it on cards (played cards use `popin`).
+- Card art is drawn in a 100x64 box with `slice`: phone tiles crop top/bottom, tall laptop tiles crop the sides (~x 12–88 visible). Keep each subject centred.
 - WebKit won't size an SVG by flex:1 or by top+bottom when absolutely positioned: give card art explicit heights (or calc()).
 
 ## Decisions
