@@ -16,8 +16,17 @@
     Gold: ['gold', coin(34, 42, 12, '#f2c94c', '#b5861c') + coin(66, 42, 12, '#f2c94c', '#b5861c') + coin(50, 30, 13, '#ffd95e', '#b5861c')],
     Estate: ['day', ground('#7fb069', 46) + house(40, 32, 20, 16, '#efe3c8', '#b5523b')],
     Duchy: ['day', ground('#6fa25a', 48) + house(26, 30, 16, 18, '#e9dcc0', '#7d4a8a') + house(58, 30, 16, 18, '#e9dcc0', '#7d4a8a') + '<rect x="40" y="26" width="20" height="22" fill="#f1e6cd"/><path d="M38 26 L50 14 L62 26Z" fill="#6a3b78"/>'],
-    Province: ['day', ground('#5f9550', 50) + '<rect x="26" y="22" width="48" height="28" fill="#c9c2b4"/><rect x="20" y="14" width="12" height="36" fill="#bdb5a6"/><rect x="68" y="14" width="12" height="36" fill="#bdb5a6"/>' +
-      '<path d="M20 14h3v-3h3v3h3v-3h3v3" fill="#bdb5a6"/><rect x="45" y="36" width="10" height="14" rx="5" fill="#5a3b22"/><line x1="74" y1="14" x2="74" y2="3" stroke="#4a4a4a" stroke-width="1.2"/><path d="M74 3 L84 6 L74 9Z" fill="#2f6fd0"/>'],
+    // Castle on rolling hills: curtain wall, two coned towers, tall keep with a flag (Estate house -> Duchy manor -> Province castle).
+    Province: ['day', '<path d="M0 46 Q22 36 46 44 T100 40 V64 H0Z" fill="#7fb069"/>' +
+      '<g stroke="#6d6252" stroke-width=".8" stroke-linejoin="round">' +
+      '<path d="M32 32 h3 v-3 h3 v3 h3 v-3 h3 v3 h12 v-3 h3 v3 h3 v-3 h3 v3 h3 V50 H32Z" fill="#e6dcc6"/>' +
+      '<rect x="42" y="18" width="16" height="32" fill="#efe6d2"/><path d="M42 18 v-3 h3 v3 h3.5 v-3 h3 v3 h3.5 v-3 h3 v3" fill="#efe6d2"/>' +
+      '<rect x="25" y="24" width="9" height="26" fill="#ddd2bb"/><rect x="66" y="24" width="9" height="26" fill="#ddd2bb"/></g>' +
+      '<path d="M23.5 24 L29.5 9 L35.5 24Z M64.5 24 L70.5 9 L76.5 24Z" fill="#2f4a8a"/>' +
+      '<path d="M29.5 9 V4 M70.5 9 V4 M50 15 V2" stroke="#4a4a4a" stroke-width="1"/><path d="M29.5 4 l5 1.6 l-5 1.6Z M70.5 4 l5 1.6 l-5 1.6Z" fill="#c8402f"/><path d="M50 2 l9 2.6 l-9 2.6Z" fill="#c8402f"/>' +
+      '<path d="M45.5 50 V42 a4.5 4.5 0 0 1 9 0 V50Z" fill="#4a3020"/><rect x="48.5" y="23" width="3" height="6" rx="1.5" fill="#3a3550"/>' +
+      '<rect x="28.5" y="30" width="2" height="5" rx="1" fill="#3a3550"/><rect x="69.5" y="30" width="2" height="5" rx="1" fill="#3a3550"/>' +
+      '<path d="M0 54 Q28 45 56 52 T100 50 V64 H0Z" fill="#4f8a44"/><path d="M46 64 Q48 56 50 50 Q52 56 56 64Z" fill="#c9b28a"/>'],
     Curse: ['plum', '<circle cx="50" cy="32" r="18" fill="#2a1736"/><path d="M50 18 C62 22 64 40 50 46 C40 42 42 28 50 28 C56 30 54 38 50 38" fill="none" stroke="#c48be0" stroke-width="3" stroke-linecap="round"/>'],
     Cellar: ['cave', '<path d="M10 64 L10 52 H24 V44 H38 V36 H52" fill="none" stroke="#a88a66" stroke-width="5"/><ellipse cx="72" cy="40" rx="13" ry="16" fill="#8a5a2e"/><path d="M60 32 H84 M59 40 H85 M60 48 H84" stroke="#4e3218" stroke-width="2"/>'],
     Chapel: ['dusk', ground('#7a9a5a', 52) + '<rect x="38" y="28" width="24" height="24" fill="#efe6d6"/><path d="M35 28 L50 16 L65 28Z" fill="#8a4b3a"/><rect x="46" y="6" width="8" height="12" fill="#efe6d6"/><path d="M50 2 V9 M47 5 H53" stroke="#c09a3e" stroke-width="1.6"/><path d="M46 52 V42 a4 4 0 0 1 8 0 V52Z" fill="#5a3b22"/>'],
@@ -49,12 +58,14 @@
       '<circle cx="42" cy="42" r="4" fill="#f2c94c"/><circle cx="50" cy="40" r="4" fill="#cfd6de"/><circle cx="58" cy="42" r="4" fill="#f2c94c"/>'],
     Witch: ['night', '<circle cx="80" cy="14" r="7" fill="#f5ecd6"/><path d="M30 56 Q50 64 70 56 L66 40 H34Z" fill="#2a2a2a"/><ellipse cx="50" cy="40" rx="18" ry="4" fill="#6ee7a8"/><circle cx="44" cy="32" r="3" fill="#6ee7a8" opacity=".7"/><circle cx="54" cy="26" r="2" fill="#6ee7a8" opacity=".5"/>' +
       '<path d="M14 30 L22 4 L30 30Z" fill="#3a1f4a"/><rect x="8" y="29" width="28" height="3" rx="1.5" fill="#3a1f4a"/>'],
-    Harbinger: ['dusk', '<path d="M20 44 Q40 36 60 30 L82 22 L84 34 L62 36 Q42 42 24 50Z" fill="#c99a2e"/><ellipse cx="84" cy="28" rx="3" ry="7" fill="#8a6a22"/><path d="M90 20 l6 -4 M92 28 h7 M90 36 l6 4" stroke="#fff3d6" stroke-width="2" stroke-linecap="round"/>'],
+    Harbinger: ['dusk', ground('#7a9a5a', 56) + '<path d="M18 40 Q36 38 50 34 L64 22 L66 46 L52 40 Q36 44 18 44Z" fill="#d9a93a" stroke="#8a6a22" stroke-width="1"/><ellipse cx="65" cy="34" rx="4" ry="12" fill="#8a6a22"/><ellipse cx="65" cy="34" rx="2.4" ry="9" fill="#5a4316"/>' +
+      '<rect x="15" y="39" width="4" height="6" rx="1" fill="#8a6a22"/><path d="M38 41 l-2 12 M44 39 l3 12" stroke="#b23b3b" stroke-width="2"/><path d="M33 52 h18 l-3 6 h-12Z" fill="#b23b3b"/>' +
+      '<path d="M73 24 l7 -5 M75 34 h9 M73 44 l7 5" stroke="#fff3d6" stroke-width="2.2" stroke-linecap="round"/>'],
     Merchant: ['day', ground('#c9b28a', 52) + '<rect x="30" y="28" width="40" height="18" rx="2" fill="#a8783e"/><circle cx="38" cy="50" r="6" fill="#5a3b22"/><circle cx="62" cy="50" r="6" fill="#5a3b22"/><circle cx="38" cy="50" r="2" fill="#c99a2e"/><circle cx="62" cy="50" r="2" fill="#c99a2e"/>' +
       '<rect x="34" y="20" width="10" height="8" fill="#cfd6de"/><rect x="46" y="18" width="10" height="10" fill="#d84a4a"/><rect x="58" y="21" width="9" height="7" fill="#f2c94c"/><path d="M70 34 H86" stroke="#7a5230" stroke-width="3"/>'],
     Vassal: ['day', ground('#7fb069', 54) + '<path d="M34 10 H66 V32 Q66 50 50 58 Q34 50 34 32Z" fill="#3d7fc1"/><path d="M50 10 V58 M34 28 H66" stroke="#f2c94c" stroke-width="4"/>'],
-    Poacher: ['green', ground('#4f8045', 52) + '<path d="M26 8 Q12 32 26 56" fill="none" stroke="#7a5230" stroke-width="3"/><path d="M26 8 L26 56" stroke="#e6e0d0" stroke-width="1"/><path d="M26 32 H70" stroke="#7a5230" stroke-width="2"/><path d="M70 28 L78 32 L70 36Z" fill="#9aa6b4"/>' +
-      '<ellipse cx="80" cy="48" rx="8" ry="5" fill="#9a8a72"/><ellipse cx="86" cy="40" rx="1.6" ry="5" fill="#9a8a72"/>'],
+    Poacher: ['green', ground('#4f8045', 52) + '<path d="M32 12 Q18 32 32 52" fill="none" stroke="#7a5230" stroke-width="3.2"/><path d="M32 12 L32 52" stroke="#f3eee0" stroke-width="1"/><path d="M26 32 H56" stroke="#5a3b22" stroke-width="2"/><path d="M56 28 L63 32 L56 36Z" fill="#6c7480"/><path d="M26 32 l-4 -3 M26 32 l-4 3" stroke="#d84a4a" stroke-width="1.6"/>' +
+      '<ellipse cx="74" cy="46" rx="9" ry="6" fill="#8a6a4a"/><circle cx="81" cy="40" r="4.5" fill="#8a6a4a"/><ellipse cx="80" cy="31" rx="1.8" ry="6" fill="#8a6a4a"/><ellipse cx="84" cy="31" rx="1.8" ry="6" fill="#8a6a4a" transform="rotate(12 84 31)"/><circle cx="65.5" cy="45" r="2.5" fill="#f5f0e6"/><circle cx="82.5" cy="39.5" r="1" fill="#1f1f1f"/>'],
     Bandit: ['night', ground('#3a4a3a', 54) + '<circle cx="50" cy="30" r="17" fill="#e0b48a"/><path d="M33 28 H67 V34 H33Z" fill="#1f1f1f"/><circle cx="43" cy="31" r="2" fill="#fff"/><circle cx="57" cy="31" r="2" fill="#fff"/><path d="M33 18 Q50 6 67 18 L67 22 H33Z" fill="#4a2a2a"/>' + coin(80, 50, 6, '#f2c94c', '#b5861c')],
     Sentry: ['night', ground('#3a4a3a', 56) + '<rect x="40" y="16" width="20" height="40" fill="#8f877a"/><path d="M38 16 h4 v-4 h4 v4 h4 v-4 h4 v4 h4 v-4 h4 v4" fill="#8f877a"/><rect x="46" y="24" width="8" height="10" fill="#ffd27a"/><circle cx="50" cy="29" r="9" fill="#ffd27a" opacity=".25"/>'],
     Artisan: ['room', '<rect x="0" y="52" width="100" height="12" fill="#7a5230"/><path d="M36 52 Q26 40 36 30 Q40 24 38 18 H54 Q52 24 56 30 Q66 40 56 52Z" fill="#c0603f"/><path d="M38 36 Q46 40 54 36" stroke="#f2c94c" stroke-width="2" fill="none"/>' +
