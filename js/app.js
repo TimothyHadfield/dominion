@@ -683,7 +683,7 @@
       })).join('') + '</div><span class="cap">Pick</span></div>';
     } else {
       const who = v.cur === ME ? 'You' : v.players[v.cur].name;
-      tray = '<div class="tray"><div class="cards">' + (play.length ? play.map((c, i) => face(c, { size: 'mini', cls: i >= playFrom ? 'pop' : '' })).join('') : '<span class="cap">' + esc(who) + ': nothing in play</span>') + '</div>' +
+      tray = '<div class="tray"><div class="cards">' + (play.length ? play.map((c, i) => face(c, { size: 'mini', cls: i >= playFrom ? 'popin' : '' })).join('') : '<span class="cap">' + esc(who) + ': nothing in play</span>') + '</div>' +
         '<div class="counters"><span>Actions <b>' + (v.cur === ME ? v.actions : '–') + '</b></span><span>Buys <b>' + (v.cur === ME ? v.buys : '–') + '</b></span><span>$ <b>' + (v.cur === ME ? v.coins : '–') + '</b></span></div></div>';
     }
 
