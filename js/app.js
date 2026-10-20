@@ -200,6 +200,27 @@
   const ui = { online: false, tab: 'play', sel: null, selHand: -1, picks: [], prevTurns: -1, prevHand: 0, prevPlay: 0, studyAll: false, starting: false, planProgress: 0 };
   function resetSel() { ui.sel = null; ui.selHand = -1; ui.picks = []; }
 
+  // ------------------------------------------------------------------ sound + effects (js/fx.js + js/dom-fx.js)
+  // Every switch lives in fx.js (Settings → Sound & effects); dom-fx.js turns view changes into timed steps.
+  const FXON = !!(window.FX && window.DomFx);
+  const fxs = { table: null, prev: null, fresh: false };
+  function fxClasses() {
+    const st = FX.settings, r = document.documentElement.classList;
+    r.toggle('fx-noanim', !st.animations); r.toggle('fx-fast', st.animSpeed === 'fast');
+  }
+  if (FXON) { FX.init({ game: 'dominion', accent: '#6ea8fe', onChange: fxClasses }); DomFx.defineSounds(FX); fxClasses(); }
+  const fxErr = () => { if (FXON) FX.play('error'); };
+  const fxDom = {
+    tile: n => vPlay.querySelector('[data-tile="' + n + '"]'),
+    deck: () => $('.odds', vPlay),
+    chip: s => $('[data-chip="' + s + '"]', vPlay),
+    chipVP: s => $('[data-chip="' + s + '"] b', vPlay),
+    coins: () => $('[data-ctr="coins"]', vPlay),
+    hand: () => $('.hand', vPlay),
+    info: () => $('.info', vPlay),
+    prov: () => $('[data-chip="prov"]', vPlay),
+  };
+
   // ------------------------------------------------------------------ helpers
   function mainType(name) {
     const t = CARDS[name].types;
@@ -376,6 +397,7 @@
     for (let i = 0; i < s.opps; i++) players.push({ name: s.opps > 1 ? lvl + ' ' + (i + 1) : lvl, bot: mk() });
     const setup = { seed: (Math.random() * 4294967296) >>> 0, kingdom: k, edition: ed, players, advisor: best, maxRounds: 80 };
     table = new LocalTable(DomEngine.newGame(setup));
+    fxs.fresh = true;
     store.game = { state: table.state, started: Date.now(), planReady: !!cached };
     resetSel(); ui.prevTurns = -1;
     save();
@@ -430,10 +452,10 @@
       net.busy = true; net.sentV = table.snap.v;
       clearTimeout(net.timer); net.timer = setTimeout(() => { unbusy(); }, 12000);
       resetSel(); renderGame();
-      table.room.act({ answer }).then(r => { if (!r.ok) { unbusy(); toast(r.message); renderGame(); } });
+      table.room.act({ answer }).then(r => { if (!r.ok) { unbusy(); fxErr(); toast(r.message); renderGame(); } });
       return;
     }
-    try { table.act(ME, answer); } catch (e) { toast(e.message); return; }
+    try { table.act(ME, answer); } catch (e) { fxErr(); toast(e.message); return; }
     store.game.state = table.state;
     const v = table.view(ME);
     if (v.over && !store.game.finished) { store.game.finished = true; store.last = { state: table.state }; }
@@ -445,7 +467,11 @@
     if (tileAllowed(name, v, p)) {
       if (ui.sel === name) { act(name); return; }
       ui.sel = name;
-    } else ui.sel = ui.sel === name ? null : name;
+    } else {
+      // a second tap on a card you can't buy or gain right now
+      if (ui.sel === name && p && (p.kind === 'buy' || p.kind === 'gain')) fxErr();
+      ui.sel = ui.sel === name ? null : name;
+    }
     ui.selHand = -1;
     renderGame();
   }
@@ -463,6 +489,7 @@
       ui.selHand = i; ui.sel = v.me.hand[i];
       renderGame(); return;
     }
+    if (p && p.kind === 'action' && ui.selHand === i) fxErr(); // tried to play a card that isn't an Action
     ui.sel = ui.sel === v.me.hand[i] && ui.selHand === i ? null : v.me.hand[i];
     ui.selHand = ui.sel ? i : -1;
     renderGame();
@@ -626,15 +653,24 @@
     const play = v.cur === ME ? v.players[ME].play : v.players[v.cur].play;
     const playFrom = newTurn ? 0 : Math.min(ui.prevPlay, play.length);
     ui.prevTurns = myTurns; ui.prevHand = v.me.hand.length; ui.prevPlay = play.length;
+    // sounds + effects for whatever changed since the last screen (a computer's whole turn arrives at once)
+    let fxPlan = null;
+    if (FXON) {
+      const fresh = fxs.fresh; fxs.fresh = false;
+      fxPlan = DomFx.plan(fxs.table === table ? fxs.prev : null, v, ME,
+        { fresh, dealN: v.me.hand.length - handFrom, fast: FX.settings.animSpeed === 'fast' });
+      fxs.table = table; fxs.prev = fxPlan.snap;
+    }
+    const dealAt = fxPlan ? fxPlan.dealAt : 0, dealGap = FXON && FX.settings.animSpeed === 'fast' ? 33 : 60;
 
     // status
     const order = [];
     for (let k = 0; k < v.players.length; k++) order.push(v.players[k]);
     const away = i => !!(table.online && table.snap.seats && table.snap.seats[i] && !table.snap.seats[i].online);
-    const chips = order.map(pl => '<span class="chip' + (pl.seat === v.cur && !v.over ? ' turn' : '') + (away(pl.seat) ? ' off' : '') + '"><span class="dot" style="background:' + COLORS[pl.seat % 4] + '"></span><span class="nmx">' + esc(pl.name) + '</span> <b>' + pl.vp + '</b></span>').join('');
+    const chips = order.map(pl => '<span class="chip' + (pl.seat === v.cur && !v.over ? ' turn' : '') + (away(pl.seat) ? ' off' : '') + '" data-chip="' + pl.seat + '"><span class="dot" style="background:' + COLORS[pl.seat % 4] + '"></span><span class="nmx">' + esc(pl.name) + '</span> <b>' + pl.vp + '</b></span>').join('');
     const empty = Object.keys(v.supply).filter(k => v.supply[k] === 0).length;
     const status = '<div class="status"><div class="chips">' + chips +
-      '<span class="chip" title="Provinces left">Prov <b>' + v.supply.Province + '</b></span>' +
+      '<span class="chip" title="Provinces left" data-chip="prov">Prov <b>' + v.supply.Province + '</b></span>' +
       (empty ? '<span class="chip" style="border-color:' + (empty >= 2 ? 'var(--bad)' : 'var(--line)') + '">Empty <b>' + empty + '</b></span>' : '') + '</div>' +
       '<button class="icon-btn" id="btn-sheet-log" data-btn="log" aria-label="Log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>' +
       '<button class="icon-btn" data-btn="quit" aria-label="Quit game"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>';
@@ -684,7 +720,7 @@
     } else {
       const who = v.cur === ME ? 'You' : v.players[v.cur].name;
       tray = '<div class="tray"><div class="cards">' + (play.length ? play.map((c, i) => face(c, { size: 'mini', cls: i >= playFrom ? 'popin' : '' })).join('') : '<span class="cap">' + esc(who) + ': nothing in play</span>') + '</div>' +
-        '<div class="counters"><span>Actions <b>' + (v.cur === ME ? v.actions : '–') + '</b></span><span>Buys <b>' + (v.cur === ME ? v.buys : '–') + '</b></span><span>$ <b>' + (v.cur === ME ? v.coins : '–') + '</b></span></div></div>';
+        '<div class="counters"><span>Actions <b>' + (v.cur === ME ? v.actions : '–') + '</b></span><span>Buys <b>' + (v.cur === ME ? v.buys : '–') + '</b></span><span>$ <b data-ctr="coins">' + (v.cur === ME ? v.coins : '–') + '</b></span></div></div>';
     }
 
     // odds
@@ -701,7 +737,7 @@
       const allowed = handAllowed(i, v, p);
       const picked = (p && p.kind === 'pickHand' && ui.picks.indexOf(i) >= 0) || ui.selHand === i;
       const dim = p && (p.kind === 'pickHand' || p.kind === 'action') && !allowed;
-      return face(c, { cls: (allowed ? 'can ' : '') + (picked ? 'sel ' : '') + (dim ? 'dim ' : '') + (i >= handFrom ? 'deal' : ''), attr: ' data-hand="' + i + '"', delay: i >= handFrom ? (i - handFrom) * 60 : 0 });
+      return face(c, { cls: (allowed ? 'can ' : '') + (picked ? 'sel ' : '') + (dim ? 'dim ' : '') + (i >= handFrom ? 'deal' : ''), attr: ' data-hand="' + i + '"', delay: i >= handFrom ? dealAt + (i - handFrom) * dealGap : 0 });
     }).join('') : '<span class="muted" style="font-size:13px;padding:0 4px 40px">' + (v.cur === ME && v.phase === 'buy' ? 'Your Treasures are in play.' : 'No cards in hand.') + '</span>') + '</div>';
 
     // buttons
@@ -742,6 +778,9 @@
     vPlay.innerHTML = '<div id="game">' + status + supply + info + tray + odds + hand + '<div class="acts">' + acts + '</div>' + side + '</div>';
     const h2 = $('.hand', vPlay);
     if (h2 && !newTurn) h2.scrollLeft = keepScroll;
+    if (fxPlan && fxPlan.steps.length) {
+      DomFx.react(fxPlan, FX, fxDom, { me: ME, seats: v.players.map(pl => pl.seat), colors: [COLORS[ME % 4], '#f0b354', '#6ee7a8', '#e8eaf0', '#6ea8fe'] });
+    }
   }
 
   // ================================================================== KINGDOM
@@ -866,10 +905,12 @@
       '<div class="seg" data-ed style="margin-top:8px"><button aria-pressed="' + (s.edition === 2) + '" data-v="2">2nd edition</button><button aria-pressed="' + (s.edition === 1) + '" data-v="1">1st edition</button><button aria-pressed="' + (s.edition === 'mix') + '" data-v="mix">Both</button></div>' +
       (table ? '<p class="muted" style="font-size:12.5px;margin:8px 0 0">Applies to your next game.</p>' : '') + '</div>' +
       '<div class="panel">' + sw('odds', 'Show odds', 'Chance of $5 / $6 / $8 next hand') + sw('hints', 'Buy hints', 'Light up what the simulator would buy') + '</div>' +
+      (FXON ? '<div class="panel"><span class="label">Sound &amp; effects</span><div id="fx-box"></div></div>' : '') +
       '<div class="panel"><div class="setrow"><div class="grow"><b>Online play</b><span>Friends on their own phones, any mix with computers.</span></div><button class="btn small" data-online>Open</button></div></div>' +
       '<div class="panel"><div class="setrow"><div class="grow"><b>Reset</b><span>Clears the saved game, last game and settings.</span></div><button class="btn small" data-reset>Reset</button></div></div>' +
       '<p class="ver">Dominion Lab ' + VERSION + ' · <a href="../">more board &amp; card games</a><br>Fan-made study tool, not affiliated with the publisher. Card art drawn for this site.</p>' +
       '</div>';
+    if (FXON) FX.renderSettings($('#fx-box', vSet));
   }
   vSet.addEventListener('click', e => {
     const b = e.target.closest('[data-ed] button');

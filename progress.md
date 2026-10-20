@@ -2,7 +2,7 @@
 
 ## START HERE
 Read order: this file → CLAUDE.md → docs/rules-check.md → docs/ideas.md → chat.md.
-Last updated: 2026-10-20 (Province art fix).
+Last updated: 2026-10-20 (sounds, celebrations, animations).
 Live: https://timothyhadfield.github.io/dominion/ · Repo: https://github.com/TimothyHadfield/dominion
 
 ## Goal right now
@@ -20,6 +20,7 @@ Dominion base game (1st + 2nd edition) vs 1–3 computers or online friends, wit
 | Rules check with sources | Done: docs/rules-check.md. |
 | Design pass (2026-10-20) | Done: laptop supply tiles fill the column as tall cards, info box fixed height, bigger hand; phone hand 68x100; SE short-screen rule; dark select; tray "pop" class bug fixed. |
 | Art fix (2026-10-20) | Province redrawn as a castle on hills (house → manor → castle trio); Harbinger and Poacher redrawn (subjects were cropped off the tiles). Others checked, fine. art.js?v=2. |
+| Sound & effects (2026-10-20) | Done: js/fx.js (shared copy) + js/dom-fx.js (event diff → timed sounds/animations), Settings → "Sound & effects". 13 fx tests (`node tests/fx.test.js`). Map below. |
 | QA pass (2026-10-19, scratchpad dom-qa.mjs) | 15 edition × seats × level games played to the end with a reload mid-game; 6 kinds of corrupt saved data; 60 fast taps; hash/back. One bug found and fixed (saved opps 99 → 99 computers; settings now clamped on load). |
 
 ## Standing instructions (Tim's words)
@@ -28,6 +29,27 @@ Dominion base game (1st + 2nd edition) vs 1–3 computers or online friends, wit
 - "Really work on the webdesign of the games, aswell as art, fitting it with an iphone and computer"
 - "make sure that everything works properlly without errors or whatnot... Make sure to get everything right like rules and artwork and specific numbers of cards"
 - Common brief: $0, no copyrighted art or rulebook text, no page scroll on main screens, bottom tabs on phone, "?" explains why, choices in Settings.
+- "add opptional sounds you can add to the games that reflect what's happening in the game accurately as well as win celebrations, and other fun annimations to go along with everything. Just make sure everything is customizable in the settings so the user can play as preffered." (2026-10-20)
+
+## Event → sound map (js/dom-fx.js, from the log + turn records diff, so computers and online friends sound the same)
+| Event | Sound | Animation |
+|---|---|---|
+| Deal (new game) / reshuffle | `shuffle` | deck bar pops (mine) |
+| Card into my hand | `cardDeal` per card, 60 ms apart | existing deal-in, now started in step with the sound (≤ 400 ms) |
+| Action played | `cardFlip` | existing pop-in in the tray |
+| Treasures paid / Moneylender +$3 | `coins` | my $ counter counts up |
+| Buy / gain | `cardSlide` | tile flies to my deck bar (mine) or their chip; "+N" VP float |
+| Province bought | `cardSlide` + big moment | mine: star burst + `ding`; theirs: Prov chip pops |
+| Attack played (Militia, Witch, Bandit, Bureaucrat, Spy, Thief) | `hit` (full when it hits me, softer when mine) | my hand shakes / their chips shake |
+| Curse gained | `curse` (own: sour falling pair) | chip flashes purple, "-1" |
+| Trash / lost to Bandit, Thief | `trash` (own: paper crumple) | — |
+| Discard, put on deck, Cellar | `cardFlip` (softer) | — |
+| Moat block | `block` (own: shield clank) | chip pops |
+| Thief steals | `capture` | — |
+| Your turn after waiting (online only; vs computers it's instant) | `turn` | info box flashes |
+| Illegal tap (2nd tap on an unaffordable tile / non-Action in Action phase, rejected move) | `error` | — |
+| Game over | VP count-up on every chip, then `celebrate` win (confetti in my colour) / lose | |
+Other players' sounds play at 0.75 volume. A whole computer turn is spaced out over ≤ 2.6 s; Fast = 0.55×.
 
 ## Traps
 - `js/online.js` is a COPY of `../_online/online.js`. Never edit it here; recopy when the shared module changes.
@@ -39,6 +61,9 @@ Dominion base game (1st + 2nd edition) vs 1–3 computers or online friends, wit
 - Local test servers used ports 8231 and 8467. Old servers from past sessions still hold 8231 and serve stale files: use a fresh port (8793 on 10-20) and curl it first.
 - `.pop` is the help bubble's class and the bubble code removes any `.pop` on click. Never reuse it on cards (played cards use `popin`).
 - Card art is drawn in a 100x64 box with `slice`: phone tiles crop top/bottom, tall laptop tiles crop the sides (~x 12–88 visible). Keep each subject centred.
+- `js/fx.js` is a COPY of `../_fx/fx.js`; never edit it here. Game-specific sounds go through `FX.define` in js/dom-fx.js.
+- A DomEngine view shares its turn records with the live game (they keep changing): fx keeps `DomFx.snap(v)` as "prev", never the view itself.
+- Chips carry `data-chip` (not `data-seat`: the lobby click handler uses `data-seat`).
 - WebKit won't size an SVG by flex:1 or by top+bottom when absolutely positioned: give card art explicit heights (or calc()).
 
 ## Decisions
@@ -54,6 +79,7 @@ Dominion base game (1st + 2nd edition) vs 1–3 computers or online friends, wit
 - A real iPhone (only Safari's engine at 393px via phone-view).
 - Online with 3–4 humans at once (tested 2 humans; computers fill other seats in node tests).
 - Medium vs Hard is close (55%); Hard is not much stronger than Medium.
+- Sounds never heard: Playwright WebKit on Windows has no Web Audio; sound logic verified with a fake AudioContext in node only. Online fx (other humans' moves) verified by node diff tests, not in two live browsers.
 - Design pass checked at 393x659, iPhone SE, 1280x800 and 1280x680 (WebKit). Not checked: laptops under ~650px tall, 3-opponent status row on SE.
 
 ## Rejected / parked

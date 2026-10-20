@@ -18,3 +18,10 @@
 - **Built:** js/art.js: Province = castle (two blue-coned towers, keep, red flags, gate, path, two hills); Harbinger (horn) and Poacher (bow + rabbit) re-centred so the tiles' crop no longer hides them. art.js?v=2.
 - **Verified:** 26 + 7 tests pass; WebKit 393px + desktop game shots and art gallery incl. greyed tiles (scratchpad design/dominion-art/before|after); no overflow or console errors.
 - **Open:** real iPhone look.
+
+## 2026-10-20 — sounds, celebrations, animations
+- **Asked:** "add opptional sounds ... win celebrations, and other fun annimations ... customizable in the settings" (manager brief, all games).
+- **Built:** js/fx.js (copy of _fx), js/dom-fx.js (view diff → timed sounds + animations; own `trash`, `curse`, `block` sounds), app.js hooks (data-chip / data-ctr tags, error sound, Settings section), index.html (scripts, fx rows styled like the other switches, Animations off / Fast CSS), tests/fx.test.js.
+- **Verified:** 13 fx tests (seen failing first: module missing, then a win/lose swap failed 3), 26 engine + 7 online pass. WebKit: full games (1 and 3 opponents, storage blocked) with no console errors, no scroll/overflow, no overlays left; shots of Settings, mid-game buy, win (star burst, VP count-up, confetti) at 393px + desktop (scratchpad design/dominion-fx/).
+- **Open:** hearing it on a real iPhone; online fx in two live browsers.
+
