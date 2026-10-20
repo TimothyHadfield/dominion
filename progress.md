@@ -18,6 +18,7 @@ Dominion base game (1st + 2nd edition) vs 1–3 computers or online friends, wit
 | Study tab: buys vs sim, draw luck, points race | Done. |
 | Online rooms (shared `_online` module, Firebase `th-board-games`) | Done. Two-browser test passed: create, join, play to the end, reload mid-game, host leave. 7 online tests. |
 | Rules check with sources | Done: docs/rules-check.md. |
+| QA pass (2026-10-19, scratchpad dom-qa.mjs) | 15 edition × seats × level games played to the end with a reload mid-game; 6 kinds of corrupt saved data; 60 fast taps; hash/back. One bug found and fixed (saved opps 99 → 99 computers; settings now clamped on load). |
 
 ## Standing instructions (Tim's words)
 - "do dominion"
