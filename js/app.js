@@ -198,7 +198,7 @@
 
   // ------------------------------------------------------------------ ui state
   const ui = { online: false, tab: 'play', sel: null, selHand: -1, picks: [], prevTurns: -1, prevHand: 0, prevPlay: 0, studyAll: false, starting: false, planProgress: 0, btnLock: 0, askKey: '' };
-  function resetSel() { ui.sel = null; ui.selHand = -1; ui.picks = []; }
+  function resetSel() { ui.sel = null; ui.selHand = -1; ui.picks = []; ui.look = null; }
 
   // ------------------------------------------------------------------ sound + effects (js/fx.js + js/dom-fx.js)
   // Every switch lives in fx.js (Settings → Sound & effects); dom-fx.js turns view changes into timed steps.
@@ -470,6 +470,10 @@
     if (!table) return;
     const v = table.view(ME);
     const p = v.pending;
+    // a card on the table that isn't yours to pick (played cards, an opponent's discard): tap to read it
+    const look = t.closest('[data-look]');
+    if (look && !t.closest('[data-list]')) { ui.look = ui.look === look.dataset.look ? null : look.dataset.look; renderGame(); return; }
+    if (t.closest('#table, #g-side')) ui.look = null;
     const tile = t.closest('[data-tile]');
     const hc = t.closest('[data-hand]');
     const lc = t.closest('[data-list]');
@@ -530,6 +534,12 @@
     renderGame();
   }
   function onHand(i, v, p) {
+    // copies sit on one stack and the chosen copy moves to its top: a tap anywhere on that stack means the chosen copy
+    const loose = p && p.kind === 'pickHand' && p.max > 1;
+    if (!loose) {
+      const chosen = p && p.kind === 'pickHand' ? (ui.picks.length ? ui.picks[0] : -1) : ui.selHand;
+      if (chosen >= 0 && chosen !== i && v.me.hand[chosen] === v.me.hand[i]) i = chosen;
+    }
     if (p && p.kind === 'pickHand' && handAllowed(i, v, p)) {
       const at = ui.picks.indexOf(i);
       if (at >= 0) ui.picks.splice(at, 1);
@@ -713,6 +723,56 @@
   let fans = [];
   function dropFans() { fans.forEach(f => f && f.disconnect && f.disconnect()); fans = []; }
   const backHTML = () => TABLE.back({ cls: 'dom-back' });
+  // My hand held like a real player sorts it: copies of a card together (a tight stack with a "×N" count),
+  // Actions first, then Treasures, Victory cards, Curses. Each different card then gets enough room to show
+  // its name, so a 10-card hand stays readable on a phone. The DOM keeps the engine's hand order (taps,
+  // deal motion); only positions change. `top(i)` puts that copy on top of its stack (the selected one).
+  const HAND_RANK = n => (is(n, 'Action') ? 0 : is(n, 'Treasure') ? 1 : n === 'Curse' ? 3 : 2);
+  function handGroups(names, top) {
+    const by = new Map();
+    names.forEach((n, i) => { if (!by.has(n)) by.set(n, []); by.get(n).push(i); });
+    const keys = Array.from(by.keys()).sort((a, b) => HAND_RANK(a) - HAND_RANK(b) || CARDS[b].cost - CARDS[a].cost || a.localeCompare(b));
+    return keys.map(n => by.get(n).sort((a, b) => (top(a) ? 1 : 0) - (top(b) ? 1 : 0) || a - b));
+  }
+  // loose = every copy gets its own room (picking several cards from the hand: each must be tappable)
+  function groupFan(el, els, groups, loose) {
+    els.forEach(e => { const c = e.querySelector('.hcount'); if (c) c.remove(); e.classList.remove('cov'); });
+    if (!els.length) return;
+    const cw = els[0].offsetWidth || 56, ch = els[0].offsetHeight || cw * 92 / 59, W = el.clientWidth || 300;
+    const N = els.length, G = groups.length;
+    const rotMax = Math.min(9, 2 + G * 2);
+    const pad = Math.min((W - cw) / 4, ch * Math.sin(rotMax * Math.PI / 180) * 0.85);
+    const room = Math.max(0, W - 2 * pad - cw);
+    let d, R;
+    if (loose) { d = R = N > 1 ? Math.min(cw * 0.94, room / (N - 1)) : 0; }
+    else {
+      d = Math.min(cw * 0.12, 8);
+      R = G > 1 ? Math.min(cw * 0.94, (room - (N - G) * d) / (G - 1)) : 0;
+      if (G > 1 && R < cw * 0.8) { d = 3; R = Math.min(cw * 0.94, (room - (N - G) * d) / (G - 1)); }
+      R = Math.max(R, 1);
+    }
+    const total = cw + (loose ? (N - 1) * d : (G - 1) * R + (N - G) * d);
+    let x = Math.max(0, (W - total) / 2), z = 0;
+    const pos = [];
+    groups.forEach((idx, gi) => {
+      const t = loose ? 0 : (G > 1 ? gi / (G - 1) * 2 - 1 : 0);
+      idx.forEach((i, k) => {
+        const tt = loose ? (N > 1 ? z / (N - 1) * 2 - 1 : 0) : t;
+        const r = tt * rotMax, y = (1 - Math.cos(r * Math.PI / 180)) * ch * 3;
+        pos.push({ i, x, y, r, z: ++z, show: k === idx.length - 1 ? (gi === G - 1 ? cw : R) : d });
+        x += k === idx.length - 1 ? R : d;
+      });
+      if (!loose && idx.length > 1) els[idx[idx.length - 1]].insertAdjacentHTML('beforeend', '<span class="hcount">×' + idx.length + '</span>');
+    });
+    const drop = Math.max.apply(null, pos.map(p => p.y));
+    pos.forEach(p => {
+      const e = els[p.i];
+      e.style.setProperty('--x', p.x.toFixed(1) + 'px'); e.style.setProperty('--y', (p.y - drop).toFixed(1) + 'px'); e.style.setProperty('--r', p.r.toFixed(2) + 'deg');
+      e.style.zIndex = p.z;
+      if (p.show < cw * 0.9) e.classList.add('cov'); // name starts at the left edge so the uncovered strip shows it
+    });
+    el.style.height = Math.ceil(ch + drop + 4) + 'px';
+  }
   const motionMs = ms => Math.round(ms * (FXON && FX.settings.animSpeed === 'fast' ? 0.55 : 1));
   // A card flies from `from` (a deck, a seat) to its place, turning face up on the way (a 3-D turn).
   function flipFly(from, to, name, delay, faceUp) {
@@ -787,7 +847,7 @@
     for (let k = 1; k < order.length; k++) others.push(order[(ME + k) % order.length]); // clockwise from my left
     const seatsHTML = others.map(pl => '<div class="seat" data-seatbox="' + pl.seat + '">' + plate(pl) +
       '<div class="things"><div class="sdeck" data-n="' + pl.drawSize + '"></div><div class="sfan" data-n="' + pl.handSize + '"></div>' +
-      '<div class="sdisc' + (pl.discardTop ? '' : ' tbl-spot') + '">' + (pl.discardTop ? face(pl.discardTop, { size: 'xs' }) : '') + '</div></div></div>').join('');
+      '<div class="sdisc' + (pl.discardTop ? '" data-look="' + esc(pl.discardTop) : ' tbl-spot') + '">' + (pl.discardTop ? face(pl.discardTop, { size: 'xs' }) : '') + '</div></div></div>').join('');
     const empty = Object.keys(v.supply).filter(k => v.supply[k] === 0).length;
     const emptyTag = empty ? '<span class="emptytag' + (empty >= 2 ? ' warn' : '') + '">Empty ' + empty + '</span>' : '';
     const opps = '<div class="opps"><div class="oppseats">' + seatsHTML + '</div>' + emptyTag +
@@ -827,11 +887,13 @@
       if (table.online && table.snap.hostAway) p2 = 'The host’s connection dropped. Another player takes over in about a minute.';
       else if (table.online) p2 = 'Room ' + esc(table.snap.code);
     }
-    if (ui.sel && CARDS[ui.sel]) {
-      const c = CARDS[ui.sel];
-      p2 = '<b>' + esc(ui.sel) + '</b> · $' + c.cost + ' · ' + esc(c.text) + (v.supply[ui.sel] != null ? ' <span>(' + v.supply[ui.sel] + ' left)</span>' : '');
+    // the card being read: one tapped on the table (played, an opponent's discard) or the selected one
+    const shown = ui.look && CARDS[ui.look] ? ui.look : ui.sel;
+    if (shown && CARDS[shown]) {
+      const c = CARDS[shown];
+      p2 = '<b>' + esc(shown) + '</b> · $' + c.cost + ' · ' + esc(c.text) + (v.supply[shown] != null ? ' <span>(' + v.supply[shown] + ' left)</span>' : '');
     }
-    const infoCard = ui.sel && CARDS[ui.sel] ? face(ui.sel, { size: 'big' }) : '<div class="spot">Tap a card</div>';
+    const infoCard = shown && CARDS[shown] ? face(shown, { size: 'big' }) : '<div class="spot">Tap a card</div>';
     const info = '<div class="info' + (mine ? ' mine' : '') + '"><div class="p1">' + p1 + '</div><div class="p2">' + p2 + '</div></div>';
 
     // the play area in front of whoever's turn it is (or the cards to choose from)
@@ -845,7 +907,14 @@
     } else {
       const who = v.cur === ME ? 'You' : v.players[v.cur].name;
       const mineT = v.cur === ME;
-      playRow = '<div class="play"><div class="cards">' + (play.length ? play.map((c, i) => face(c, { size: 'xs', cls: i >= playFrom ? 'popin' : '', attr: ' data-pi="' + i + '"' })).join('') : '<span class="cap">' + esc(who) + ': nothing in play</span>') + '</div>' +
+      // the same card played several times in a row sits on one small stack with a count (play order kept),
+      // so a long chain stays big enough to see
+      const pgs = [];
+      play.forEach((c, i) => { const g = pgs[pgs.length - 1]; if (g && g.name === c) g.idx.push(i); else pgs.push({ name: c, idx: [i] }); });
+      const stacks = pgs.map(g => '<div class="pst' + (g.idx.length > 1 ? ' multi' : '') + '" data-look="' + esc(g.name) + '">' +
+        g.idx.map(i => face(g.name, { size: 'xs', cls: i >= playFrom ? 'popin' : '', attr: ' data-pi="' + i + '"' })).join('') +
+        (g.idx.length > 1 ? '<span class="pcount">×' + g.idx.length + '</span>' : '') + '</div>').join('');
+      playRow = '<div class="play"><div class="cards">' + (play.length ? stacks + (mineT ? '' : '<span class="cap whose">' + esc(who) + '</span>') : '<span class="cap">' + esc(who) + ': nothing in play</span>') + '</div>' +
         '<div class="counters"><div class="ctr"><span class="tbl-token">' + (mineT ? v.actions : '–') + '</span>Actions</div>' +
         '<div class="ctr"><span class="tbl-token">' + (mineT ? v.buys : '–') + '</span>Buys</div>' +
         '<div class="ctr"><span class="tbl-coin">$<b data-ctr="coins">' + (mineT ? v.coins : '–') + '</b></span>&nbsp;</div></div></div>';
@@ -931,7 +1000,14 @@
     const deckEl = $('.mdeck', vPlay);
     TABLE.deck(deckEl, v.me.drawSize, { cls: 'dom-back', perCard: 0.3, max: 8 });
     const handEl = $('.hand', vPlay);
-    if (handCards.length) fans.push(TABLE.fan(handEl, handCards, { pick: false, spread: 0.94, maxRot: 9, lift: 0 }));
+    if (handCards.length) {
+      const hf = TABLE.fan(handEl, handCards, { pick: false, spread: 0.94, maxRot: 9, lift: 0 });
+      const isTop = i => ui.selHand === i || (p && p.kind === 'pickHand' && ui.picks.indexOf(i) >= 0);
+      const groups = handGroups(v.me.hand, isTop);
+      hf.layout = () => groupFan(handEl, hf.cards, groups, !!(p && p.kind === 'pickHand' && p.max > 1));
+      hf.layout();
+      fans.push(hf);
+    }
     else handEl.innerHTML = '<span class="none">' + (v.cur === ME && v.phase === 'buy' ? 'Your Treasures are in play.' : 'No cards in hand.') + '</span>';
 
     // physical motion: new hand cards are dealt off my deck and turn face up; played cards slide out of my hand

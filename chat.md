@@ -7,6 +7,12 @@
 - **Verified:** `node tests/engine.test.js` (26 pass) and `node tests/online.test.mjs` (7 pass), each with a mutation that made a test fail. Two WebKit browsers played a full online game against live Firebase, including a reload and the host leaving. phone-view at 393px and desktop for every tab and a full game: no console errors, no overflow.
 - **Open:** real iPhone check; Hard only 55% vs Medium.
 
+## 2026-10-21 — visibility pass
+- **Asked:** "for a lot of the games the cards or board layout is too small to easily see what's going on ... Consider parts of the board that are dense" (manager brief, all games).
+- **Built:** app.js `handGroups`/`groupFan` (hand sorted, copies stacked with ×N, covered names left-aligned, loose layout when picking several), stack-tap mapping in `onHand`, played-card runs stacked with ×N, opponent's name in their play row, `ui.look` tap-to-read for played cards and opponent discards; index.html CSS for these. app.js?v=8.
+- **Verified:** scratchpad vis/dominion: check.mjs 31 failures on the old build → 155/155 pass (WebKit, Chrome); taps.mjs 18/18 (stack-tap test failed 3/3 without the `onHand` mapping); 40 after-shots at 393x659, 320x568, 659x393, 1280x800, 1440x900: no page scroll, overflow or console errors; engine 26, edge 15, fx 13, online 7. One read-only reviewer; its regressions fixed (play order kept, badge off the cost coin, wider tap area on opponent discards).
+- **Open:** phone supply names and played cards still small (tap to read); real iPhone.
+
 ## 2026-10-20 — edge pass (weird scenarios)
 - **Asked:** "Could you focus on making each game perfect especially in scenarios that the game doesn't expect or are a little weird." Plus: run the table-look reviewer that never ran; fix setup scrolling at 320 px and phone landscape.
 - **Built:** end screen explains the ending (shared win, tiebreak, round limit) via engine `result.reason/tiebreak`; online computer and duplicate/blank names; 400 ms double-tap guard; Back closes overlays; two-tab sync; setup split into two merged panels with landscape 2-column grid; reviewer layout fixes (Empty chip, type lines, seats, SE landscape table, game-over info). Versions: engine 2, online-game 2, app 6, worker 2.

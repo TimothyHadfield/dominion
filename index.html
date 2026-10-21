@@ -228,6 +228,17 @@
   .play .cards .cf + .cf { margin-left: -6px; }
   .play .cards.pick .cf { --cw: 31px; }
   .play .cards.pick .cf + .cf { margin-left: 4px; }
+  /* copies played this turn stack up with a count; tap a stack to read the card */
+  .play .cards .pst { position: relative; display: flex; flex: none; cursor: pointer; }
+  .play .cards .pst + .pst { margin-left: 5px; }
+  .play .cards .pst .cf + .cf { margin-left: calc(var(--cw) * -.84); }
+  .play .cards .pst.multi { margin-right: 9px; }
+  .play .cards .cap.whose { margin-left: 8px; }
+  .play .cards .pcount { position: absolute; z-index: 3; right: -10px; bottom: 1px; min-width: 15px; text-align: center; background: #1b1b1f; color: #fff;
+    font: 750 10px/14px system-ui, sans-serif; border-radius: 7px; padding: 0 4px; box-shadow: 0 1px 3px rgba(0,0,0,.5); pointer-events: none; }
+  .seat .sdisc[data-look] { cursor: pointer; position: relative; }
+  .seat .sdisc[data-look]::after { content: ""; position: absolute; inset: -12px -8px; } /* a finger-sized tap area round the small pile */
+  @media (min-width: 900px) { .play .cards .pcount { font-size: 12px; line-height: 17px; border-radius: 9px; padding: 0 5px; } }
   .play .cap { font-size: 11.5px; color: rgba(255,235,200,.34); letter-spacing: .06em; text-transform: uppercase; font-weight: 700; white-space: nowrap; }
   .counters { display: flex; gap: 7px; flex: none; align-items: center; }
   .ctr { display: flex; flex-direction: column; align-items: center; gap: 1px; font: 600 9.5px/1 system-ui, sans-serif; color: rgba(255,235,200,.75); }
@@ -250,6 +261,11 @@
   .hand > .cf { --cw: var(--hcw); }
   .hand .none { position: absolute; left: 0; right: 0; bottom: 30px; text-align: center; font-size: 13px; color: rgba(255,235,200,.65); }
   .tbl-fan > .cf { position: absolute; left: 0; bottom: 0; transform-origin: 50% 100%; transform: translate(var(--x, 0), var(--y, 0px)) rotate(var(--r, 0deg)); }
+  /* hand sorted into stacks of copies: a count on the stack, and a half-covered card shows its name from the left */
+  .hand .cf.cov .nm { justify-content: flex-start; }
+  .hand .cf .hcount { position: absolute; z-index: 2; left: calc(var(--cw) * .05); top: calc(var(--cw) * .34); min-width: 18px; text-align: center;
+    background: #1b1b1f; color: #fff; font: 750 11px/16px system-ui, sans-serif; border-radius: 8px; padding: 0 4px; box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+  @media (min-width: 900px) { .hand .cf .hcount { font-size: 13px; line-height: 19px; border-radius: 10px; padding: 0 6px; } }
   .acts { grid-area: acts; display: flex; gap: 8px; }
   .acts .btn { flex: 1; }
 
@@ -519,6 +535,6 @@
 <script src="js/fx.js?v=2"></script>
 <script src="js/table.js?v=1"></script>
 <script src="js/dom-fx.js?v=2"></script>
-<script src="js/app.js?v=7"></script>
+<script src="js/app.js?v=8"></script>
 </body>
 </html>
