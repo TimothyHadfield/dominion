@@ -7,6 +7,12 @@
 - **Verified:** `node tests/engine.test.js` (26 pass) and `node tests/online.test.mjs` (7 pass), each with a mutation that made a test fail. Two WebKit browsers played a full online game against live Firebase, including a reload and the host leaving. phone-view at 393px and desktop for every tab and a full game: no console errors, no overflow.
 - **Open:** real iPhone check; Hard only 55% vs Medium.
 
+## 2026-10-20 — edge pass (weird scenarios)
+- **Asked:** "Could you focus on making each game perfect especially in scenarios that the game doesn't expect or are a little weird." Plus: run the table-look reviewer that never ran; fix setup scrolling at 320 px and phone landscape.
+- **Built:** end screen explains the ending (shared win, tiebreak, round limit) via engine `result.reason/tiebreak`; online computer and duplicate/blank names; 400 ms double-tap guard; Back closes overlays; two-tab sync; setup split into two merged panels with landscape 2-column grid; reviewer layout fixes (Empty chip, type lines, seats, SE landscape table, game-over info). Versions: engine 2, online-game 2, app 6, worker 2.
+- **Verified:** tests edge 15 (5 failed before the fix), engine 26, online 7, fx 13. Headless WebKit scripts (scratchpad edge/dominion) at 8 sizes: before 22/32 setup checks failed, after all pass except 320x460; taps T1–T12 + D6–D8 pass (8 failed on the old code); layout S 96 checks pass.
+- **Open:** style ideas from the reviewer left for Tim; 320x460 setup; real iPhone.
+
 ## 2026-10-20 — visual design pass
 - **Asked:** "review them again for design improvements especially visually" (manager brief, all games).
 - **Built:** CSS polish in index.html (laptop table, phone hand, SE rule, dark select, tiles, kingdom, settings); app.js `pop`→`popin` (played cards were taking the help bubble's style and could vanish on a tap).

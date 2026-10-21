@@ -209,9 +209,13 @@
       const best = Math.max.apply(null, vp);
       let tied = this.players.filter(p => vp[p.i] === best);
       const fewest = Math.min.apply(null, tied.map(p => p.turns));
+      const onPoints = tied.length;
       tied = tied.filter(p => p.turns === fewest);
-      this.result = { vp, winners: tied.map(p => p.i), turns: this.players.map(p => p.turns) };
-      this.say(null, tied.length > 1 ? 'Game over: shared win' : 'Game over: ' + tied[0].name + ' wins');
+      // why it ended: the Provinces ran out, 3 piles ran out, or the safety round limit (no real-game rule)
+      const reason = this.supply.Province === 0 ? 'provinces' : this.emptyPiles() >= (this.n >= 5 ? 4 : 3) ? 'piles' : 'rounds';
+      this.result = { vp, winners: tied.map(p => p.i), turns: this.players.map(p => p.turns), reason, tiebreak: onPoints > tied.length };
+      if (reason === 'rounds') this.say(null, 'Round ' + this.maxRounds + ' reached: the game stops here');
+      this.say(null, tied.length > 1 ? 'Game over: shared win' : 'Game over: ' + tied[0].name + ' wins' + (onPoints > tied.length ? ' (tied on points, fewer turns)' : ''));
     }
 
     *turn(p) {

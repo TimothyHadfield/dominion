@@ -39,11 +39,22 @@
       const best = isPlan(o.plan) ? o.plan : Sim.quickPlan(kingdom);
       const level = o.level === 'easy' || o.level === 'medium' ? o.level : 'hard';
       const comp = () => (level === 'easy' ? Sim.bigMoney() : level === 'medium' ? Sim.mediumFor(kingdom) : best);
-      const players = [];
-      for (let i = 0; i < nSeats; i++) {
-        const s = (seats && seats[i]) || { kind: 'computer' };
-        players.push({ name: String(s.name || 'Player ' + (i + 1)).slice(0, 24), bot: s.kind === 'computer' ? comp() : null });
-      }
+      // names: computers like the local game ("Hard", or "Hard 1", "Hard 2"), blank humans "Player N",
+      // and two people with the same name told apart ("Sam", "Sam 2")
+      const list = [];
+      for (let i = 0; i < nSeats; i++) list.push((seats && seats[i]) || { kind: 'computer' });
+      const nComp = list.filter(s => s.kind === 'computer').length;
+      const lvl = level[0].toUpperCase() + level.slice(1);
+      const used = new Set();
+      let k = 0;
+      const players = list.map((s, i) => {
+        const bot = s.kind === 'computer';
+        let name = bot ? lvl + (nComp > 1 ? ' ' + (++k) : '') : String(s.name == null ? '' : s.name).trim().slice(0, 24) || 'Player ' + (i + 1);
+        const base = name;
+        for (let n = 2; used.has(name.toLowerCase()); n++) name = base + ' ' + n;
+        used.add(name.toLowerCase());
+        return { name, bot: bot ? comp() : null };
+      });
       return Engine.newGame({
         seed: Math.floor(rng() * 4294967296) >>> 0, kingdom, edition: o.edition === 1 ? 1 : 2,
         players, advisor: best, maxRounds: 80,

@@ -79,6 +79,13 @@ All 11 match W exactly (asserted card by card in the "rules check" test):
 2nd edition — First Game, Size Distortion, Deck Top, Sleight of Hand, Improvements, Silver & Gold.
 1st edition — First Game, Big Money, Interaction, Size Distortion, Village Square.
 
+## Weird-case rules (edge pass 2026-10-20, tests/edge.test.js)
+No rule changed. These were checked against the rulebook and pinned with tests:
+- Tie on VP: fewer turns wins; still tied, the win is shared (rulebook "Ending the game"). The end screen now says which.
+- 3 empty Supply piles end the game, and the Curse pile counts as one (it's a Supply pile).
+- Witch with no Curses left, Mine with no Gold left (must gain a cheaper Treasure), Workshop with nothing gainable, Poacher with more empty piles than cards, Militia vs 3 cards, Bandit/Spy/Vassal vs empty decks, Throne Room on Throne Room, Merchant + a Silver gained into hand by Mine: all match the card text.
+- Not a rule: the site stops a game after round 80 (safety limit so two computers can't loop forever). The end screen and log now say so instead of naming a winner silently.
+
 ## Not covered (on purpose)
 - 5–6 players (needs the separate Base Cards box).
 - Choosing not to play a Treasure (no effect with base-set cards).

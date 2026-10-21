@@ -2,7 +2,7 @@
 
 ## START HERE
 Read order: this file → CLAUDE.md → docs/rules-check.md → docs/ideas.md → chat.md.
-Last updated: 2026-10-20 (real-table look).
+Last updated: 2026-10-20 (edge pass: weird scenarios).
 Live: https://timothyhadfield.github.io/dominion/ · Repo: https://github.com/TimothyHadfield/dominion
 
 ## Goal right now
@@ -22,6 +22,7 @@ Dominion base game (1st + 2nd edition) vs 1–3 computers or online friends, wit
 | Art fix (2026-10-20) | Province redrawn as a castle on hills (house → manor → castle trio); Harbinger and Poacher redrawn (subjects were cropped off the tiles). Others checked, fine. art.js?v=2. |
 | Sound & effects (2026-10-20) | Done: js/fx.js (shared copy) + js/dom-fx.js (event diff → timed sounds/animations), Settings → "Sound & effects". 13 fx tests (`node tests/fx.test.js`). Map below. |
 | Real-table look (2026-10-20) | Done: wood table from the player's seat. Supply laid out like the real game (basics Copper/Silver/Gold/Curse + Estate/Duchy/Province, Trash on laptop, 10 kingdom piles in 2 rows of 5 by cost), piles drawn as card stacks whose thickness tracks the count. Me at the bottom: deck (stack), hand fan, messy discard pile; play area above; opponents across the top (deck, hand of backs, discard). Real-proportion cards (59x92) with name banner, art, text box, type line, cost coin; navy card back. Motion: cards dealt face-down from the deck with a 3-D turn, played cards slide from hand, buys fly to the discard pile. Helpers kept (info plate, odds bar, log/deck table in laptop side panel or the log button). Uses shared `_table` kit copies css/table.css + js/table.js. |
+| Edge pass (2026-10-20) | Done: 54 weird scenarios tested, 21 failed, 20 fixed (table below). 15 edge tests (`node tests/edge.test.js`). |
 | QA pass (2026-10-19, scratchpad dom-qa.mjs) | 15 edition × seats × level games played to the end with a reload mid-game; 6 kinds of corrupt saved data; 60 fast taps; hash/back. One bug found and fixed (saved opps 99 → 99 computers; settings now clamped on load). |
 
 ## Standing instructions (Tim's words)
@@ -32,6 +33,18 @@ Dominion base game (1st + 2nd edition) vs 1–3 computers or online friends, wit
 - Common brief: $0, no copyrighted art or rulebook text, no page scroll on main screens, bottom tabs on phone, "?" explains why, choices in Settings.
 - "add opptional sounds you can add to the games that reflect what's happening in the game accurately as well as win celebrations, and other fun annimations to go along with everything. Just make sure everything is customizable in the settings so the user can play as preffered." (2026-10-20)
 - "could you also make sure that each of the games also have a look to them so that the game (either board or card layout) looks almost identical to how the board or card layout looks like in real life, so it's easy to understand if you've already played it before, and also so it feels more like you're actually playing in real life rather than you're playing it online. Even things like how youre cards or other things are laid out infront of you, make it look like they are actual cards laid out similar to how it looks like in real life. Make the decks look like actual decks. Make the board have the same design as it does in real life with the same layouts. It should look kind of like you're looking through a camera that is connected to a user's glasses that is playing in real life (not actually, but the layout and style of everything should be similar)." (2026-10-20)
+- "I've noticed the games often have good user interfaces but could be improved especially when a scenario happens that the game might've not really thought about or whatnot. Could you focus on making each game perfect especially in scenarios that the game doesn't expect or are a little weird." (2026-10-20)
+
+## Edge pass scenarios (2026-10-20)
+Full list: 54 scenarios in 5 families (rules R1–R19, people P1–P6, taps T1–T12, devices D1–D9, screens S1–S8). Rules via `tests/edge.test.js`; taps, devices and screens via headless WebKit at 8 sizes (393x659, 320x568, 320x460, 659x393, 568x320, 1280x800, 1280x600, 640x400 = 200% zoom).
+| Family | Tested | Failed | Fixed | Fixes |
+|---|---|---|---|---|
+| Rules | 19 | 4 | 4 | Tiebreak / shared win / round-limit end now explained on the end screen and log (no rule changed) |
+| People | 6 | 3 | 3 | Online computers named "Hard" / "Hard 1, Hard 2" not "Player 3"; same or blank names told apart; long names no longer cut short in landscape |
+| Taps | 12 | 6 | 6 | Double tap on Buy phase / End turn / Confirm no longer skips a step (400 ms guard after the prompt changes); Back closes the log sheet, Quit confirm and "?" bubble instead of leaving the table |
+| Devices | 9 | 4 | 3 | Setup fits without scrolling at 320 px and both phone landscapes; second tab follows the first instead of overwriting the game |
+| Screens | 8 | 4 | 4 | "Empty" chip no longer covers odds; long type lines shrink; seats don't touch at 320 px/landscape; game-over shows the result instead of "nothing in play" |
+Left: setup at 320x460 (SE with a browser bar) still hides "How Dominion works" under the tabs (Deal stays visible); opening "How Dominion works" scrolls inside the setup box by design.
 
 ## Event → sound map (js/dom-fx.js, from the log + turn records diff, so computers and online friends sound the same)
 | Event | Sound | Animation |
@@ -70,6 +83,10 @@ Other players' sounds play at 0.75 volume. A whole computer turn is spaced out o
 - Supply card width uses container-query units (cqw/cqh) on `.supply`. FX.flyTo clones an element outside that container, so `fxDom.tile` sets `--cw` inline in px first (else the clone renders huge).
 - WebKit ignores backface-visibility on the dealing ghost: faces swap via the `.half` class at the half turn. Don't "simplify" it back.
 - Dimmed hand cards use a filter, not opacity (overlapping fan cards would show through).
+- Double-tap guard: `ui.askKey` (turn|phase|pending|actions|buys|hand size) changes → `ui.btnLock` = now+400 ms, set at the END of renderGame (render takes ~340 ms in headless WebKit). Buttons except deck/log ignore taps while locked.
+- Overlays (log sheet, Quit confirm, "?" bubble) push a history state; Back closes them first (`ui.skipPop` when closed by hand). Don't remove the pushState in `sheet()`.
+- `window.DomApp.ui` is exposed for tests only.
+- Playwright WebKit `touchscreen.tap` waits ~1 s per tap: test real double taps with two dispatched clicks 70 ms apart.
 - WebKit won't size an SVG by flex:1 or by top+bottom when absolutely positioned: give card art explicit heights (or calc()).
 
 ## Decisions
@@ -86,7 +103,8 @@ Other players' sounds play at 0.75 volume. A whole computer turn is spaced out o
 - Online with 3–4 humans at once (tested 2 humans; computers fill other seats in node tests).
 - Medium vs Hard is close (55%); Hard is not much stronger than Medium.
 - Sounds never heard: Playwright WebKit on Windows has no Web Audio; sound logic verified with a fake AudioContext in node only. Online fx (other humans' moves) verified by node diff tests, not in two live browsers.
-- Real-table look: the independent reviewer agent could not run (sub-agent limit reached during the wave); review was a self-review against the research notes. Online table not shot in two live browsers (online node tests pass; same render path). The lobby (setup screen) already scrolled a little at SE and phone landscape before this change.
+- Real-table look: an outside reviewer ran in the edge pass (2026-10-20); its layout bugs were fixed. Its pure-style ideas (plaque buttons, no dimmed cards, bigger played cards, phone Trash pile, hide tabs in game) were left for Tim. Online table not shot in two live browsers (online node tests pass; same render path).
+- Edge pass: setup at 320x460 (SE + browser bar) leaves "How Dominion works" under the tab bar. Two-tab sync tested locally only, not with online games (online already syncs through Firebase).
 - Design pass checked at 393x659, iPhone SE, 1280x800 and 1280x680 (WebKit). Not checked: laptops under ~650px tall, 3-opponent status row on SE.
 
 ## Rejected / parked

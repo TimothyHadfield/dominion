@@ -61,7 +61,7 @@
   function getWorker() {
     if (worker !== null) return worker;
     try {
-      worker = new Worker('js/worker.js?v=1');
+      worker = new Worker('js/worker.js?v=2');
       worker.onmessage = e => {
         const w = waiting[e.data.id];
         if (!w) return;
@@ -197,7 +197,7 @@
   }
 
   // ------------------------------------------------------------------ ui state
-  const ui = { online: false, tab: 'play', sel: null, selHand: -1, picks: [], prevTurns: -1, prevHand: 0, prevPlay: 0, studyAll: false, starting: false, planProgress: 0 };
+  const ui = { online: false, tab: 'play', sel: null, selHand: -1, picks: [], prevTurns: -1, prevHand: 0, prevPlay: 0, studyAll: false, starting: false, planProgress: 0, btnLock: 0, askKey: '' };
   function resetSel() { ui.sel = null; ui.selHand = -1; ui.picks = []; }
 
   // ------------------------------------------------------------------ sound + effects (js/fx.js + js/dom-fx.js)
@@ -247,13 +247,15 @@
     return first.split(', ').map(x => '<b>' + esc(x) + '</b>').join('') + (rest ? '<span class="rule"></span><span>' + esc(rest) + '</span>' : '');
   }
   const nameCls = n => (n.length > 10 ? ' l3' : n.length > 7 ? ' l2' : '');
+  // long type lines ("Action – Reaction") print smaller, as on the real cards
+  const tyCls = t => { const n = t.join(' – ').length; return n > 15 ? ' l3' : n > 8 ? ' l2' : ''; };
   function face(name, o) {
     o = o || {};
     const c = CARDS[name];
     const cls = ['cf', mainType(name), o.size || '', o.cls || ''].join(' ');
     return '<div class="' + cls + '"' + (o.attr || '') + (o.style ? ' style="' + o.style + '"' : '') + '>' +
       '<div class="nm' + nameCls(name) + '">' + esc(name) + '</div>' + DomArt.svg(name) +
-      '<div class="tx">' + cardText(name) + '</div><div class="ty">' + esc(c.types.join(' – ')) + '</div><span class="cost">' + c.cost + '</span></div>';
+      '<div class="tx">' + cardText(name) + '</div><div class="ty' + tyCls(c.types) + '">' + esc(c.types.join(' – ')) + '</div><span class="cost">' + c.cost + '</span></div>';
   }
   // red -> green for "good" numbers (tight range given per use)
   function heat(x, lo, hi) {
@@ -290,10 +292,22 @@
     const back = document.createElement('div');
     back.className = 'sheet-back'; back.id = 'sheet';
     back.innerHTML = '<div class="sheet"><div class="row"><h3 class="grow">' + esc(title) + '</h3><button class="btn small ghost" data-close>Close</button></div><div class="scroll">' + html + '</div></div>';
-    back.addEventListener('click', e => { if (e.target === back || e.target.closest('[data-close]')) closeSheet(); });
+    back.addEventListener('click', e => { if (e.target === back || e.target.closest('[data-close]')) closeSheet(true); });
     document.body.appendChild(back);
+    // Back closes the sheet (you were just at the table)
+    try { history.pushState({ tab: ui.tab, sheet: 1 }, '', '#' + ui.tab); } catch (e) { /* file:// */ }
   }
-  function closeSheet() { const s = $('#sheet'); if (s) s.remove(); }
+  function closeSheet(byHand) {
+    const s = $('#sheet');
+    if (!s) return;
+    s.remove();
+    if (byHand && history.state && history.state.sheet) { ui.skipPop = true; try { history.back(); } catch (e) { ui.skipPop = false; } }
+  }
+  // anything floating (sheet, confirm, help bubble) goes away when the screen changes
+  function closeOverlays() {
+    closeSheet(false);
+    document.querySelectorAll('.confirm-back, .pop').forEach(el => el.remove());
+  }
 
   // ------------------------------------------------------------------ tabs
   $('#tabs').addEventListener('click', e => {
@@ -302,6 +316,7 @@
     showTab(b.dataset.tab, true);
   });
   function showTab(tab, push) {
+    if (push) closeOverlays();
     ui.tab = tab;
     document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
     document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + tab));
@@ -309,7 +324,14 @@
     render();
   }
   // Back goes to where you just were (the previous tab)
-  window.addEventListener('popstate', e => { showTab((e.state && e.state.tab) || 'play', false); });
+  window.addEventListener('popstate', e => {
+    if (ui.skipPop) { ui.skipPop = false; return; } // our own step back after closing a sheet by hand
+    const had = !!$('#sheet') || !!$('.confirm-back');
+    closeOverlays();
+    const tab = (e.state && e.state.tab) || 'play';
+    if (had && tab === ui.tab) return; // Back only closed the sheet
+    showTab(tab, false);
+  });
 
   // help bubbles
   document.addEventListener('click', e => {
@@ -385,18 +407,20 @@
     const lv = STRENGTH_NOTE ? 'Measured over ' + STRENGTH_NOTE.games + ' simulated games each: Hard beats Easy ' + STRENGTH_NOTE.hardEasy +
       ', Hard beats Medium ' + STRENGTH_NOTE.hardMedium + ', Medium beats Easy ' + STRENGTH_NOTE.mediumEasy + '.' :
       'Easy buys only money. Medium adds the strongest single card. Hard plays the best plan the simulator finds for this kingdom.';
-    vPlay.innerHTML = '<div class="setup">' +
-      '<div class="hero"><img src="icon.svg" alt=""><div><h1>Dominion Lab</h1><p>The base game vs measured computers, with live odds.</p></div></div>' +
-      '<div class="panel">' +
+    // two halves of one panel (kingdom | players + buttons): stacked on a tall phone, side by side on a phone on its side
+    vPlay.innerHTML = '<div class="setup main-setup">' +
+      '<div class="hero"><img src="icon.svg" alt=""><div class="grow"><h1>Dominion Lab</h1><p>The base game vs measured computers, with live odds.</p></div>' +
+      (store.last ? '<button class="btn small ghost" data-go="study">Study last game</button>' : '') + '</div>' +
+      '<div class="panel pa">' +
       '<div class="row"><span class="label grow">Kingdom</span><button class="btn small" data-go="kingdom">Change</button></div>' +
-      '<div class="kmini">' + k.map(c => '<span>' + esc(c) + '</span>').join('') + '</div>' +
+      '<div class="kmini">' + k.map(c => '<span>' + esc(c) + '</span>').join('') + '</div></div>' +
+      '<div class="panel pb">' +
       '<div class="label">Opponents</div><div class="seg" data-set="opps">' + [1, 2, 3].map(n => '<button aria-pressed="' + (s.opps === n) + '" data-v="' + n + '">' + n + '</button>').join('') + '</div>' +
       '<div class="row"><span class="label grow">Computer</span>' + qBtn(lv) + '</div>' +
       '<div class="seg" data-set="level">' + ['easy', 'medium', 'hard'].map(l => '<button aria-pressed="' + (s.level === l) + '" data-v="' + l + '">' + l[0].toUpperCase() + l.slice(1) + '<small>' + LEVEL_NOTE[l] + '</small></button>').join('') + '</div>' +
-      '<button class="btn primary" data-start style="width:100%">Deal</button>' +
-      '<button class="btn" data-on="open" style="width:100%">Play online</button>' +
+      '<div class="dealrow"><button class="btn primary" data-start>Deal</button>' +
+      '<button class="btn" data-on="open">Play online</button></div>' +
       '</div>' +
-      (store.last ? '<button class="btn ghost" data-go="study">Study your last game</button>' : '') +
       '<details class="panel" style="gap:6px"><summary style="cursor:pointer;font-weight:650">How Dominion works</summary>' +
       '<p class="muted" style="margin:8px 0 0;font-size:13.5px">Everyone starts with 7 Coppers and 3 Estates. Each turn: play one Action, then spend your Treasure to buy one card, then discard everything and draw 5 new cards. ' +
       'Bought cards go to your discard pile and come back when you reshuffle, so your deck improves as you go. The game ends when the Provinces run out or any 3 piles are empty. Most victory points wins; on a tie, fewer turns wins.</p></details>' +
@@ -448,7 +472,12 @@
     if (tile) onTile(tile.dataset.tile, v, p);
     else if (hc) onHand(Number(hc.dataset.hand), v, p);
     else if (lc) onList(Number(lc.dataset.list), p);
-    else if (btn) onButton(btn.dataset.btn, v, p);
+    else if (btn) {
+      // a double tap must not hit the next button that appears under the finger
+      // ("Buy phase" → "End turn", "End turn" → next turn's "Buy phase")
+      if (!/^(deck|log)$/.test(btn.dataset.btn) && Date.now() < ui.btnLock) return;
+      onButton(btn.dataset.btn, v, p);
+    }
   });
 
   function tileAllowed(name, v, p) {
@@ -657,6 +686,23 @@
     return '<ul class="log">' + (items || '<li>Nothing yet.</li>') + '</ul>';
   }
 
+  // ------------------------------------------------------------------ game over: who won and why
+  function joinNames(list) { return list.length < 2 ? list.join('') : list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1]; }
+  function endTitle(v) {
+    const w = v.result.winners;
+    if (w.length > 1) {
+      const names = w.map(i => (i === ME ? 'You' : esc(v.players[i].name)));
+      return joinNames(names) + (w.indexOf(ME) >= 0 ? ' share the win!' : ' share the win');
+    }
+    return w[0] === ME ? 'You win!' : esc(v.players[w[0]].name) + ' wins';
+  }
+  function endWhy(v) {
+    const r = v.result;
+    const why = r.reason === 'provinces' ? 'The Provinces ran out.' : r.reason === 'piles' ? 'Three Supply piles ran out.' :
+      r.reason === 'rounds' ? 'Stopped after round ' + (v.round - 1) + ' (this site’s safety limit).' : '';
+    return why + (r.tiebreak ? ' Tied on points: fewer turns wins.' : '');
+  }
+
   // ------------------------------------------------------------------ the table (js/table.js draws decks, piles and fans)
   let fans = [];
   function dropFans() { fans.forEach(f => f && f.disconnect && f.disconnect()); fans = []; }
@@ -703,6 +749,10 @@
     if (!v || !v.me) { dropFans(); vPlay.innerHTML = '<div class="setup"><p class="muted">Connecting…</p></div>'; return; }
     const p = v.pending;
     const s = store.settings;
+    // a new question on screen (new phase, new prompt, next turn): ignore button taps for a moment
+    const askKey = [v.turns.length, v.phase, v.over, p ? p.kind + ':' + (p.reason || '') : '-', v.actions, v.buys, v.me.hand.length].join('|');
+    const asked = askKey !== ui.askKey && !!ui.askKey;
+    ui.askKey = askKey;
     // where my hand cards were, so a played card can slide from there onto the table
     const oldHand = Array.from(vPlay.querySelectorAll('.hand > .cf')).map(e => ({ name: e.dataset.card, r: e.getBoundingClientRect() }));
     // animation bookkeeping: whole hand deals in at the start of a new turn of mine
@@ -758,10 +808,8 @@
     // info
     let p1 = '', p2 = '', mine = false;
     if (v.over) {
-      const r = v.result;
-      const win = r.winners.length > 1 ? 'Shared win!' : (r.winners[0] === ME ? 'You win!' : esc(v.players[r.winners[0]].name) + ' wins');
-      p1 = win + ' ' + r.vp.join(' – ');
-      p2 = order.map(pl => '<b>' + esc(pl.name) + '</b> ' + pl.vp + ' VP in ' + pl.turns + ' turns').join(' · ');
+      p1 = endTitle(v);
+      p2 = endWhy(v) + ' ' + order.map(pl => '<b>' + esc(pl.name) + '</b> ' + pl.vp + ' VP in ' + pl.turns + (pl.turns === 1 ? ' turn' : ' turns')).join(' · ');
     } else if (p) {
       const t = promptFor(v, p);
       p1 = esc(t[0]); p2 = esc(t[1]); mine = true;
@@ -786,6 +834,8 @@
       playRow = '<div class="play"><div class="cards pick">' + p.cards.map((c, i) => face(c, {
         size: 'xs', cls: (ui.picks.indexOf(i) >= 0 ? 'sel' : '') + (p.only && p.only.indexOf(i) < 0 ? ' dim' : ' can'), attr: ' data-list="' + i + '"',
       })).join('') + '</div><span class="cap">Pick</span></div>';
+    } else if (v.over) {
+      playRow = ''; // the result takes the play area's place
     } else {
       const who = v.cur === ME ? 'You' : v.players[v.cur].name;
       const mineT = v.cur === ME;
@@ -797,7 +847,7 @@
 
     // odds
     let odds = '';
-    if (s.odds) {
+    if (s.odds && !v.over) {
       const o = oddsCells(v);
       odds = '<div class="odds" data-btn="deck"><span class="label">Next hand</span><div class="cells">' + o.cells + '</div>' +
         '<span class="deck">Deck ' + v.players[ME].total + ' · draw ' + v.me.drawSize + '</span>' +
@@ -863,7 +913,7 @@
       '<div class="panel logbox"><div class="label" style="margin-bottom:6px">What happened</div><div class="scroll">' + logHTML(v) + '</div></div></div>';
 
     dropFans();
-    vPlay.innerHTML = '<div id="game"><div id="table" class="tbl-surface tbl-wood-dark">' + opps + supply + info + playRow + meRow +
+    vPlay.innerHTML = '<div id="game"><div id="table" class="tbl-surface tbl-wood-dark' + (v.over ? ' over' : '') + '">' + opps + supply + info + playRow + meRow +
       '<div class="bottom">' + odds + '<div class="acts">' + acts + '</div></div></div>' + side + '</div>';
 
     // decks, hands of card backs and my hand fan (js/table.js)
@@ -895,6 +945,8 @@
     if (fxPlan && fxPlan.steps.length) {
       DomFx.react(fxPlan, FX, fxDom, { me: ME, seats: v.players.map(pl => pl.seat), colors: [COLORS[ME % 4], '#f0b354', '#6ee7a8', '#e8eaf0', '#6ea8fe'] });
     }
+    // counted from when the new buttons are on screen (drawing the table can take a while on a slow phone)
+    if (asked) ui.btnLock = Date.now() + 400;
   }
 
   // ================================================================== KINGDOM
@@ -1061,5 +1113,19 @@
       renderPlay();
     }).catch(() => { net.connecting = false; renderPlay(); });
   }
-  window.DomApp = { store, get table() { return table; }, act: a => act(a), net, version: VERSION };
+  window.addEventListener('storage', e => {
+    if (e.key !== KEY || (table && table.online)) return;
+    let s2 = null;
+    try { s2 = JSON.parse(e.newValue); } catch (err) { return; }
+    if (!s2 || s2.v !== 1) return;
+    const st = s2.game && s2.game.state;
+    const cur = table && table.state;
+    if (st && cur && st.setup.seed === cur.setup.seed && st.actions.length === cur.actions.length) return;
+    try { if (st) new LocalTable(st).view(ME); } catch (err) { return; }
+    store.game = s2.game || null; store.last = s2.last || store.last;
+    table = st ? new LocalTable(st) : null;
+    resetSel(); closeOverlays();
+    if (ui.tab === 'play') renderPlay();
+  });
+  window.DomApp = { store, get table() { return table; }, act: a => act(a), net, ui, version: VERSION };
 })();
