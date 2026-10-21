@@ -447,6 +447,11 @@
     renderPlay();
   }
 
+  // event time on the performance.now() clock (falls back to now if the browser gives something else)
+  function tapTime(e) {
+    const now = performance.now(), ts = e.timeStamp;
+    return ts > 0 && ts <= now + 50 ? ts : now;
+  }
   vPlay.addEventListener('click', e => {
     const t = e.target;
     const go = t.closest('[data-go]');
@@ -475,7 +480,8 @@
     else if (btn) {
       // a double tap must not hit the next button that appears under the finger
       // ("Buy phase" → "End turn", "End turn" → next turn's "Buy phase")
-      if (!/^(deck|log)$/.test(btn.dataset.btn) && Date.now() < ui.btnLock) return;
+      // timed by when the finger actually landed: a tap made while the phone was still drawing counts as early
+      if (!/^(deck|log)$/.test(btn.dataset.btn) && tapTime(e) < ui.btnLock) return;
       onButton(btn.dataset.btn, v, p);
     }
   });
@@ -946,7 +952,11 @@
       DomFx.react(fxPlan, FX, fxDom, { me: ME, seats: v.players.map(pl => pl.seat), colors: [COLORS[ME % 4], '#f0b354', '#6ee7a8', '#e8eaf0', '#6ea8fe'] });
     }
     // counted from when the new buttons are on screen (drawing the table can take a while on a slow phone)
-    if (asked) ui.btnLock = Date.now() + 400;
+    // and again once the new buttons are actually painted (layout runs after this function returns)
+    if (asked) {
+      ui.btnLock = performance.now() + 400;
+      requestAnimationFrame(() => setTimeout(() => { ui.btnLock = Math.max(ui.btnLock, performance.now() + 250); }, 0));
+    }
   }
 
   // ================================================================== KINGDOM

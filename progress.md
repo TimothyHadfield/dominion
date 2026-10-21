@@ -83,7 +83,7 @@ Other players' sounds play at 0.75 volume. A whole computer turn is spaced out o
 - Supply card width uses container-query units (cqw/cqh) on `.supply`. FX.flyTo clones an element outside that container, so `fxDom.tile` sets `--cw` inline in px first (else the clone renders huge).
 - WebKit ignores backface-visibility on the dealing ghost: faces swap via the `.half` class at the half turn. Don't "simplify" it back.
 - Dimmed hand cards use a filter, not opacity (overlapping fan cards would show through).
-- Double-tap guard: `ui.askKey` (turn|phase|pending|actions|buys|hand size) changes → `ui.btnLock` = now+400 ms, set at the END of renderGame (render takes ~340 ms in headless WebKit). Buttons except deck/log ignore taps while locked.
+- Double-tap guard: `ui.askKey` (turn|phase|pending|actions|buys|hand size) changes → `ui.btnLock` (performance.now clock) = render end + 400 ms, then extended to paint + 250 ms (layout/paint run after renderGame returns and took 100–600 ms under load). Taps are judged by `e.timeStamp` (when the finger landed). Buttons except deck/log ignore taps while locked. Test harness must wait for the lock before a deliberate tap.
 - Overlays (log sheet, Quit confirm, "?" bubble) push a history state; Back closes them first (`ui.skipPop` when closed by hand). Don't remove the pushState in `sheet()`.
 - `window.DomApp.ui` is exposed for tests only.
 - Playwright WebKit `touchscreen.tap` waits ~1 s per tap: test real double taps with two dispatched clicks 70 ms apart.
