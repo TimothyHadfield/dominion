@@ -6,9 +6,17 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
   const SKY = { day: ['#9fc6ef', '#e6f0fb'], dusk: ['#f2b07a', '#fbe3c4'], night: ['#2b3560', '#5a5f94'], cave: ['#4a3b2e', '#7a6249'], room: ['#c9a879', '#ead7b5'], plum: ['#4b2b5e', '#7d4f8f'], gold: ['#e7c66b', '#f6e7b4'], green: ['#8fc48a', '#dcefcf'] };
-  const bg = (k) => '<rect width="100" height="64" fill="url(#g' + k + ')"/>';
+  // sky details drawn behind every scene of that sky (2026-10-27 art pass): clouds by day, stars at night, a low sun at dusk
+  const cloud = (x, y, w) => '<g fill="#fff" opacity=".75"><ellipse cx="' + x + '" cy="' + y + '" rx="' + w + '" ry="' + (w * 0.38) + '"/><ellipse cx="' + (x - w * 0.45) + '" cy="' + (y + 1) + '" rx="' + (w * 0.55) + '" ry="' + (w * 0.3) + '"/><ellipse cx="' + (x + w * 0.2) + '" cy="' + (y - w * 0.25) + '" rx="' + (w * 0.5) + '" ry="' + (w * 0.35) + '"/></g>';
+  const SKY_EXTRA = {
+    day: cloud(16, 10, 8) + cloud(84, 7, 6),
+    night: [[8, 6], [20, 14], [33, 5], [61, 9], [92, 18], [74, 4], [88, 30], [6, 24]].map(([x, y], i) => '<circle cx="' + x + '" cy="' + y + '" r="' + (i % 3 ? 0.6 : 0.9) + '" fill="#fff8dc" opacity="' + (i % 2 ? 0.6 : 0.9) + '"/>').join(''),
+    dusk: '<circle cx="82" cy="20" r="9" fill="#ffe2a8" opacity=".55"/><circle cx="82" cy="20" r="5.5" fill="#fff0c8" opacity=".8"/>',
+  };
+  const bg = (k) => '<rect width="100" height="64" fill="url(#g' + k + ')"/>' + (SKY_EXTRA[k] || '');
   const ground = (c, y) => '<path d="M0 ' + (y || 50) + ' Q50 ' + ((y || 50) - 6) + ' 100 ' + (y || 50) + ' V64 H0Z" fill="' + (c || '#6f9a54') + '"/>';
-  const coin = (x, y, r, fill, edge) => '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="' + edge + '"/><circle cx="' + x + '" cy="' + (y - 1.2) + '" r="' + r + '" fill="' + fill + '"/><circle cx="' + x + '" cy="' + (y - 1.2) + '" r="' + (r * 0.62) + '" fill="none" stroke="' + edge + '" stroke-width="1.4"/>';
+  const coin = (x, y, r, fill, edge) => '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="' + edge + '"/><circle cx="' + x + '" cy="' + (y - 1.2) + '" r="' + r + '" fill="' + fill + '"/><circle cx="' + x + '" cy="' + (y - 1.2) + '" r="' + (r * 0.62) + '" fill="none" stroke="' + edge + '" stroke-width="1.4"/>' +
+    '<ellipse cx="' + (x - r * 0.38) + '" cy="' + (y - 1.2 - r * 0.42) + '" rx="' + (r * 0.32) + '" ry="' + (r * 0.16) + '" fill="#fff" opacity=".55" transform="rotate(-30 ' + (x - r * 0.38) + ' ' + (y - 1.2 - r * 0.42) + ')"/>';
   const house = (x, y, w, h, wall, roof) => '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="' + wall + '"/><path d="M' + (x - 2) + ' ' + y + ' L' + (x + w / 2) + ' ' + (y - h * 0.7) + ' L' + (x + w + 2) + ' ' + y + 'Z" fill="' + roof + '"/><rect x="' + (x + w / 2 - 2.5) + '" y="' + (y + h - 7) + '" width="5" height="7" fill="#5a3b22"/>';
   const P = {
     Copper: ['gold', coin(50, 36, 15, '#d98b4b', '#9a5426')],
@@ -83,8 +91,10 @@
     if (!p) return '';
     const s = SKY[p[0]];
     return '<svg class="' + (cls || 'art') + '" viewBox="0 0 100 64" preserveAspectRatio="xMidYMid slice" aria-hidden="true">' +
-      '<defs><linearGradient id="g' + p[0] + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + s[0] + '"/><stop offset="1" stop-color="' + s[1] + '"/></linearGradient></defs>' +
-      bg(p[0]) + p[1] + '</svg>';
+      '<defs><linearGradient id="g' + p[0] + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + s[0] + '"/><stop offset="1" stop-color="' + s[1] + '"/></linearGradient>' +
+      '<radialGradient id="gvig" cx=".5" cy=".42" r=".75"><stop offset=".6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".28"/></radialGradient>' +
+      '<linearGradient id="gshine" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>' +
+      bg(p[0]) + p[1] + '<rect width="100" height="64" fill="url(#gshine)"/><rect width="100" height="64" fill="url(#gvig)"/></svg>';
   }
   return { svg, names: Object.keys(P) };
 });

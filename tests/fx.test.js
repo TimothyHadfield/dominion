@@ -127,7 +127,7 @@ t('whole game vs Witch + Militia computer: every event maps to its sound', () =>
   const { steps } = playGame({ seed: 5, mine: S.bigMoney(), theirs: WITCH });
   const all = [].concat(...steps.map(p => p.steps));
   const by = type => all.filter(s => s.e.type === type).map(s => s.sound);
-  const want = { shuffle: 'shuffle', deal: 'cardDeal', play: 'cardFlip', coins: 'coins', buy: 'cardSlide', province: 'cardSlide', attack: 'hit', curse: 'curse', move: 'cardFlip' };
+  const want = { shuffle: 'shuffle', deal: 'cardDeal', play: 'cardFlip', coins: 'coins', buy: 'cardSlide', province: 'province', attack: 'hit', curse: 'curse', move: 'cardFlip' };
   for (const k in want) {
     const got = by(k);
     assert.ok(got.length > 0, 'no ' + k + ' events in a whole game');
@@ -136,6 +136,20 @@ t('whole game vs Witch + Militia computer: every event maps to its sound', () =>
   assert.ok(all.filter(s => s.e.type === 'attack').some(s => s.e.onMe), 'their Witch/Militia hits me');
   assert.ok(all.filter(s => s.e.type === 'curse').some(s => s.e.seat === 0), 'I gained a Curse');
   for (const p of steps) assert.ok(Math.max(0, ...p.steps.map(s => s.at)) <= 2700, 'one reaction lasts at most ~2.6 s');
+});
+
+t('key moments: a pile running out and the last two Provinces', () => {
+  const base = { log: [], turns: [{ seat: 1, coins: 8, bought: [] }], me: { hand: [] } };
+  const prev = Object.assign({}, base, { supply: { Province: 3, Village: 1, Curse: 2 } });
+  const next = Object.assign({}, base, { supply: { Province: 2, Village: 0, Curse: 2 } });
+  const evs = DomFx.events(prev, next, 0, { dealN: 0 });
+  assert.deepStrictEqual(evs.map(e => e.type + ':' + e.card), ['pileout:Village', 'endnear:Province']);
+  const p = DomFx.plan(prev, next, 0, { dealN: 0 });
+  assert.strictEqual(p.steps.find(s => s.e.type === 'pileout').sound, 'pileout');
+  assert.ok(DomFx.snap(Object.assign({ players: [] }, next)).supply.Village === 0, 'snap keeps the supply');
+  // the game-ending last Province is the win/lose moment, not a "pile out"
+  const over = Object.assign({}, base, { over: true, result: { winners: [1] }, supply: { Province: 0, Village: 1, Curse: 2 } });
+  assert.deepStrictEqual(DomFx.events(Object.assign({}, prev, { supply: { Province: 1, Village: 1, Curse: 2 } }), over, 0, { dealN: 0 }).map(e => e.type), ['over']);
 });
 
 t('trash: Chapel-like trashing and Remodel produce the crumple', () => {

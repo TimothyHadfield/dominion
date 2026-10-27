@@ -43,3 +43,10 @@
 - **Verified:** 26 engine + 13 fx + 7 online tests pass. WebKit shots of setup/mid/late/end at 393x659, 320x568, 659x393, 1280x800, 1280x680: no console errors, no page scroll, no horizontal overflow on the table (scratchpad table/dominion/before|after). Motion script: ghosts deal and turn, nothing left hidden afterwards, play and buy land in the right place, phone + desktop.
 - **Open:** independent reviewer agent not run (sub-agent limit); real iPhone look.
 
+## 2026-10-27 — improvement pass (manager brief, all games)
+- **Asked:** "start building every single improvement you can think of after your competitor analysis" / "make our boardgames the best in every single metric we can". Brief: Hard ≥ 65% vs Medium, variants, steal-list items, kits (_coach, _profile 1.1.0, _pwa 1.2.0, _fx), art + key moments, no empty bands. Online untouched (another builder).
+- **Decided:** Hard = plan search v2 + endgame sense; Monte Carlo and v3 measured no better, dropped. No 5–6 players (needs Base Cards; Tim's call). Study tab = end-of-game review; treasures were already auto-played.
+- **Built:** bots.js smartBuy; sim.js hardFor/PLAN_V/early plans/Medium gauntlet; app.js Undo, Daily, stats recording, quit = loss, guided game, Rules, My stats, laptop hover card box, PWA hook; js/domprofile.js, js/domcoach.js; kit copies + manifest + icons; art.js finish; dom-fx.js Province chime, pile-out, endnear. Tests smart (7), profile (6), fx +1.
+- **Verified:** ladder 100×60: Hard vs Easy 80.3 → 82.3%, vs Medium 55.3 → 59.9%, Medium vs Easy 76.8%. New tests seen failing on the old code first (smart 4 fails, fx 2, Moat-undo 257/257 leaks). flows.mjs 19/19 in WebKit (tutorial, Undo, Daily, quit = loss, Rules/stats + Back); pwa-check 18/18; sizes 320x460 → 1440x900 in WebKit + Chrome: no overflow, no page errors, Deal/Daily/Undo visible. One reviewer: 2 bugs (Moat undo leak, Daily race) fixed.
+- **Open:** 65% target missed (60%); sounds and Daily streak over real days not checked; real iPhone.
+

@@ -12,12 +12,12 @@
   // event -> sound (fx.js palette, plus three of our own defined in defineSounds)
   const SOUND = {
     shuffle: 'shuffle', deal: 'cardDeal', play: 'cardFlip', coins: 'coins', buy: 'cardSlide', gain: 'cardSlide',
-    province: 'cardSlide', move: 'cardFlip', trash: 'trash', attack: 'hit', curse: 'curse', block: 'block',
-    steal: 'capture', turn: 'turn', over: null,
+    province: 'province', move: 'cardFlip', trash: 'trash', attack: 'hit', curse: 'curse', block: 'block',
+    steal: 'capture', turn: 'turn', over: null, pileout: 'pileout', endnear: null,
   };
   // ms until the next step (before the Fast factor)
   const GAP = { shuffle: 450, deal: 60, play: 200, coins: 230, buy: 220, gain: 220, province: 320, move: 160,
-    trash: 230, attack: 280, curse: 320, block: 260, steal: 240, turn: 0, over: 0 };
+    trash: 230, attack: 280, curse: 320, block: 260, steal: 240, turn: 0, over: 0, pileout: 320, endnear: 200 };
   const MAX_SPAN = 2600; // a long computer turn is squeezed into this
   const DEAL_MAX = 400; // the hand never waits longer than this to start dealing in
 
@@ -27,6 +27,10 @@
     // curse: a low, slightly sour falling pair
     FX.define('curse', k => { k.tone({ f: 311, f2: 277, dur: 0.32, vol: 0.14, type: 'triangle', lp: 1400 }); k.tone({ f: 220, f2: 185, dur: 0.45, vol: 0.14, type: 'triangle', lp: 1200, at: 0.18 }); k.noise({ f: 300, filter: 'lowpass', dur: 0.5, a: 0.1, vol: 0.12 }); }, 'moves');
     // Moat block: a shield clank
+    // Province: a bright rising four-note chime over the card slide (key moment, 2026-10-27)
+    FX.define('province', k => { k.noise({ f: 2200, q: 0.8, dur: 0.12, vol: 0.18 }); [523, 659, 784, 1047].forEach((f, i) => k.tone({ f, dur: 0.38 - i * 0.04, vol: 0.12, type: 'triangle', at: 0.06 + i * 0.07 })); }, 'moves');
+    // a Supply pile runs out: a low drum thud
+    FX.define('pileout', k => { k.tone({ f: 120, f2: 60, dur: 0.35, vol: 0.32 }); k.noise({ f: 500, filter: 'lowpass', dur: 0.2, vol: 0.25 }); }, 'moves');
     FX.define('block', k => { k.tone({ f: 740, f2: 700, dur: 0.25, vol: 0.12, type: 'triangle' }); k.tone({ f: 1910, dur: 0.15, vol: 0.05 }); k.noise({ f: 3000, q: 2, dur: 0.04, vol: 0.3 }); }, 'moves');
   }
 
@@ -127,6 +131,11 @@
     flushDeal();
     // a deal with no log line behind it (Smithy, Moat, Library...) or my new turn online
     if (dealN && !ev.some(e => e.type === 'deal')) ev.push({ type: 'deal', seat: me, n: dealN });
+    // key moments: a Supply pile runs out, and the Provinces get down to the last two
+    if (prev.supply && next.supply) {
+      for (const c of Object.keys(next.supply)) if (prev.supply[c] > 0 && next.supply[c] === 0 && !(c === 'Province' && next.over)) ev.push({ type: 'pileout', card: c });
+      if (!next.over && prev.supply.Province > 2 && next.supply.Province <= 2 && next.supply.Province > 0) ev.push({ type: 'endnear', card: 'Province' });
+    }
     if (next.over && !prev.over) {
       const w = next.result ? next.result.winners : [];
       ev.push({ type: 'over', kind: w.indexOf(me) >= 0 ? 'win' : 'lose', winners: w });
@@ -165,7 +174,7 @@
   function snap(v) {
     if (!v) return null;
     return {
-      log: (v.log || []).slice(), cur: v.cur, phase: v.phase, coins: v.coins, over: v.over, result: v.result,
+      log: (v.log || []).slice(), supply: v.supply ? Object.assign({}, v.supply) : null, cur: v.cur, phase: v.phase, coins: v.coins, over: v.over, result: v.result,
       pending: v.pending ? { kind: v.pending.kind } : null,
       turns: (v.turns || []).map(t => ({ seat: t.seat, coins: t.coins, bought: (t.bought || []).slice() })),
       me: v.me ? { hand: v.me.hand.slice() } : null,
@@ -207,6 +216,8 @@
         break;
       case 'curse': FX.flash(get(dom, 'chip', e.seat), 'var(--t-curse)'); FX.floatText(get(dom, 'chip', e.seat), '-1', 'var(--bad)'); break;
       case 'block': FX.pop(get(dom, 'chip', e.seat)); break;
+      case 'pileout': { const t = get(dom, 'tile', e.card); FX.flash(t, 'var(--bad)'); FX.shake(t); break; }
+      case 'endnear': { const pv = get(dom, 'prov'); FX.flash(pv, 'var(--accent-warm)'); FX.pulse(pv); break; }
       case 'turn': FX.flash(get(dom, 'info'), 'var(--accent-warm)'); break;
       case 'over': {
         // VP count-up on every chip, then the win or lose moment

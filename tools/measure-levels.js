@@ -18,7 +18,7 @@ for (let i = 0; i < K; i++) {
   const k = pool.slice().sort(() => rnd() - 0.5).slice(0, 10);
   const easy = S.bigMoney();
   const med = S.mediumFor(k);
-  const hard = S.findBest(k).ranked[0].strat;
+  const hard = S.hardFor(S.findBest(k).ranked[0].strat); // what the app plays: best plan + endgame sense
   plans[hard.label.replace(/\d /, '')] = (plans[hard.label.replace(/\d /, '')] || 0) + 1;
   tally['Hard vs Easy'] += S.versus(k, hard, easy, G, 500 + i * 101);
   tally['Hard vs Medium'] += S.versus(k, hard, med, G, 900 + i * 101);

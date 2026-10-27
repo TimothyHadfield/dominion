@@ -12,7 +12,7 @@
   const COLORS = ['#f0b354', '#6ea8fe', '#e98bd0', '#6ee7a8'];
   const LEVEL_NOTE = { easy: 'Big Money', medium: 'Money + 1 card', hard: 'Best plan' };
   // Measured by tools/measure-levels.js 100 60 (100 random kingdoms x 60 games per pairing), 2026-10-19.
-  const STRENGTH_NOTE = { games: '6,000', hardEasy: '80%', hardMedium: '55%', mediumEasy: '77%' };
+  const STRENGTH_NOTE = { games: '6,000', hardEasy: '82%', hardMedium: '60%', mediumEasy: '77%' }; // tools/measure-levels.js 100 60, 2026-10-27
 
   // ------------------------------------------------------------------ storage
   function fresh() {
@@ -53,7 +53,9 @@
   }
   const byCost = (a, b) => CARDS[a].cost - CARDS[b].cost || a.localeCompare(b);
   if (!store.kingdom || store.kingdom.length !== 10 || store.kingdom.some(c => !CARDS[c])) store.kingdom = DomCards.PRESETS[0].cards.slice();
-  const planKey = (k, ed) => k.slice().sort().join('|') + '#' + ed;
+  // Hard's plan cache, keyed by kingdom + rules + the plan-search version (older versions' plans are dropped)
+  const planKey = (k, ed) => k.slice().sort().join('|') + '#' + ed + '#v' + (DomSim.PLAN_V || 1);
+  if (store.plans) Object.keys(store.plans).forEach(key => { if (!/#v\d+$/.test(key) || !key.endsWith('#v' + (DomSim.PLAN_V || 1))) delete store.plans[key]; });
 
   let worker = null;
   const waiting = {};
@@ -61,7 +63,7 @@
   function getWorker() {
     if (worker !== null) return worker;
     try {
-      worker = new Worker('js/worker.js?v=2');
+      worker = new Worker('js/worker.js?v=4');
       worker.onmessage = e => {
         const w = waiting[e.data.id];
         if (!w) return;
@@ -307,7 +309,10 @@
   function closeOverlays() {
     closeSheet(false);
     document.querySelectorAll('.confirm-back, .pop').forEach(el => el.remove());
+    if (window.COACH && COACH.rulesOpen()) { ui.closingQuiet = true; COACH.closeRules(); ui.closingQuiet = false; }
+    if (window.Profile && window.Profile.isOpen()) { ui.closingQuiet = true; window.Profile.closePanel(); ui.closingQuiet = false; }
   }
+  const modalOpen = () => !!$('#sheet') || !!$('.confirm-back') || !!(window.COACH && COACH.rulesOpen()) || !!(window.Profile && window.Profile.isOpen());
 
   // ------------------------------------------------------------------ tabs
   $('#tabs').addEventListener('click', e => {
@@ -326,7 +331,7 @@
   // Back goes to where you just were (the previous tab)
   window.addEventListener('popstate', e => {
     if (ui.skipPop) { ui.skipPop = false; return; } // our own step back after closing a sheet by hand
-    const had = !!$('#sheet') || !!$('.confirm-back');
+    const had = modalOpen();
     closeOverlays();
     const tab = (e.state && e.state.tab) || 'play';
     if (had && tab === ui.tab) return; // Back only closed the sheet
@@ -410,7 +415,8 @@
     // two halves of one panel (kingdom | players + buttons): stacked on a tall phone, side by side on a phone on its side
     vPlay.innerHTML = '<div class="setup main-setup">' +
       '<div class="hero"><img src="icon.svg" alt=""><div class="grow"><h1>Dominion Lab</h1><p>The base game vs measured computers, with live odds.</p></div>' +
-      (store.last ? '<button class="btn small ghost" data-go="study">Study last game</button>' : '') + '</div>' +
+      (store.last ? '<button class="btn small ghost" data-go="study">Study last game</button>' : '') +
+      (DP ? '<button class="btn small ghost pf-open" data-stats>' + window.Profile.avatarSVG(window.Profile.avatar, 22) + 'My stats</button>' : '') + '</div>' +
       '<div class="panel pa">' +
       '<div class="row"><span class="label grow">Kingdom</span><button class="btn small" data-go="kingdom">Change</button></div>' +
       '<div class="kmini">' + k.map(c => '<span>' + esc(c) + '</span>').join('') + '</div></div>' +
@@ -418,8 +424,10 @@
       '<div class="label">Opponents</div><div class="seg" data-set="opps">' + [1, 2, 3].map(n => '<button aria-pressed="' + (s.opps === n) + '" data-v="' + n + '">' + n + '</button>').join('') + '</div>' +
       '<div class="row"><span class="label grow">Computer</span>' + qBtn(lv) + '</div>' +
       '<div class="seg" data-set="level">' + ['easy', 'medium', 'hard'].map(l => '<button aria-pressed="' + (s.level === l) + '" data-v="' + l + '">' + l[0].toUpperCase() + l.slice(1) + '<small>' + LEVEL_NOTE[l] + '</small></button>').join('') + '</div>' +
-      '<div class="dealrow"><button class="btn primary" data-start>Deal</button>' +
-      '<button class="btn" data-on="open">Play online</button></div>' +
+      '<div class="dealrow"><button class="btn primary" data-start' + (ui.starting ? ' disabled' : '') + '>' + (ui.starting ? 'Dealing the Daily… <span id="dailyprog">' + Math.round(ui.planProgress * 100) + '%</span>' : 'Deal') + '</button>' +
+      '<div class="morerow"><button class="btn" data-on="open">Play online</button>' +
+      (DP ? '<button class="btn" data-daily>' + (dailyDone() ? 'Daily ✓' : 'Daily') + '</button>' : '') +
+      (window.COACH && window.DomCoach ? '<button class="btn" data-rules>Rules</button>' : '') + '</div></div>' +
       '</div>' +
       '<details class="panel" style="gap:6px"><summary style="cursor:pointer;font-weight:650">How Dominion works</summary>' +
       '<p class="muted" style="margin:8px 0 0;font-size:13.5px">Everyone starts with 7 Coppers and 3 Estates. Each turn: play one Action, then spend your Treasure to buy one card, then discard everything and draw 5 new cards. ' +
@@ -428,29 +436,158 @@
   }
 
   // Deal is instant: Hard uses the simulated plan if it's ready, else the best measured single-card plan.
-  function startGame() {
+  // opt: { daily: day, seed, kingdom, edition, level, opps, plan, tutorial }
+  function startGame(opt) {
+    opt = opt || {};
     const s = store.settings;
-    const k = store.kingdom.slice();
-    const ed = rulesEd();
+    const k = (opt.kingdom || store.kingdom).slice();
+    const ed = opt.edition || rulesEd();
+    const level = opt.level || s.level, opps = opt.opps || s.opps;
     const cached = store.plans[planKey(k, ed)];
-    const best = cached ? cached[0].strat : DomSim.quickPlan(k);
-    const mk = () => (s.level === 'easy' ? DomSim.bigMoney() : s.level === 'medium' ? DomSim.mediumFor(k) : best);
-    const lvl = s.level[0].toUpperCase() + s.level.slice(1);
+    const best = opt.plan || (cached ? cached[0].strat : DomSim.quickPlan(k));
+    const mk = () => (level === 'easy' ? DomSim.bigMoney() : level === 'medium' ? DomSim.mediumFor(k) : DomSim.hardFor(best));
+    const lvl = level[0].toUpperCase() + level.slice(1);
     const players = [{ name: 'You' }];
-    for (let i = 0; i < s.opps; i++) players.push({ name: s.opps > 1 ? lvl + ' ' + (i + 1) : lvl, bot: mk() });
-    const setup = { seed: (Math.random() * 4294967296) >>> 0, kingdom: k, edition: ed, players, advisor: best, maxRounds: 80 };
+    for (let i = 0; i < opps; i++) players.push({ name: opps > 1 ? lvl + ' ' + (i + 1) : lvl, bot: mk() });
+    const seed = opt.seed != null ? opt.seed >>> 0 : (Math.random() * 4294967296) >>> 0;
+    const setup = { seed, kingdom: k, edition: ed, players, advisor: best, maxRounds: 80 };
+    if (opt.first != null) setup.first = opt.first;
     table = new LocalTable(DomEngine.newGame(setup));
     fxs.fresh = true;
-    store.game = { state: table.state, started: Date.now(), planReady: !!cached };
+    store.game = { state: table.state, started: Date.now(), planReady: !!(cached || opt.plan), level, opps,
+      undo: [], helped: false, recorded: false, daily: opt.daily || null, tutorial: !!opt.tutorial };
     resetSel(); ui.prevTurns = -1;
     save();
     renderPlay();
+  }
+
+  // ---- Undo (vs computers only, never in the Daily): back to before your last move, as long as that
+  // move showed nothing new (no card drawn or revealed, no other player's cards moved). Like the
+  // official app's "undo until new information".
+  function infoPrint(v) {
+    // the last thing another player did or showed (a Moat reveal moves no cards but is new information)
+    let other = '';
+    for (let i = (v.log || []).length - 1; i >= 0; i--) { const l = v.log[i]; if (l.p >= 0 && l.p !== ME) { other = l.r + ':' + l.p + ':' + l.text; break; } }
+    return v.cur + '|' + v.turns.length + '|' + other + '|' + v.players.map(pl => pl.seat === ME ? String(pl.drawSize) :
+      [pl.drawSize, pl.handSize, pl.discardSize, pl.play.length, pl.total].join(':')).join('|');
+  }
+  function undoShown() {
+    const g = store.game;
+    return !!(table && !table.online && g && !g.daily && !g.tutorial);
+  }
+  function canUndo() {
+    const g = store.game;
+    return undoShown() && !!(g.undo && g.undo.length && !g.finished);
+  }
+  function undo() {
+    if (!canUndo()) return;
+    const prev = store.game.undo.pop();
+    let t;
+    try { t = new LocalTable(prev); t.view(ME); } catch (e) { store.game.undo = []; save(); renderPlay(); return; }
+    table = t;
+    store.game.state = prev; store.game.helped = true;
+    fxs.table = null; // no sounds for cards going back
+    resetSel(); save(); renderPlay();
+  }
+
+  // ---- My stats (js/profile.js + js/domprofile.js): one result per game vs computers.
+  // A game left before the end counts as a loss; Undo makes it "with help" (not rated).
+  const DP = window.DomProfile && window.Profile ? window.DomProfile : null;
+  function recordGame() {
+    const g = store.game;
+    if (!DP || !g || !g.state || g.recorded || g.tutorial || !g.level) return;
+    g.recorded = true;
+    try {
+      const v = DomEngine.view(g.state, 0);
+      if (!v.over && !v.turns.some(t => t.seat === 0)) { save(); return; } // dealt and left at once: not a game
+      const r = DP.result({ v, me: 0, level: g.level, helped: g.helped, daily: !!g.daily });
+      if (g.daily) r.date = g.daily; // a Daily finished after midnight still belongs to the day it was dealt
+      window.Profile.recordResult(r);
+    } catch (e) { /* the stats never stop the game */ }
+    save();
+  }
+  // ---- Rules sheet + guided first game (js/coach.js + js/domcoach.js)
+  const DC = window.COACH && window.DomCoach ? window.DomCoach : null;
+  function pushModal() { try { history.pushState({ tab: ui.tab, sheet: 1 }, '', '#' + ui.tab); } catch (e) { /* file:// */ } }
+  function modalClosedByHand() {
+    if (history.state && history.state.sheet) { ui.skipPop = true; try { history.back(); } catch (e) { ui.skipPop = false; } }
+  }
+  function openRules() {
+    if (!DC) return;
+    closeOverlays();
+    COACH.rules(Object.assign({}, DC.RULES, { onClose: () => { if (!ui.closingQuiet) modalClosedByHand(); } }));
+    pushModal();
+  }
+  let tour = null;
+  function startTutorial() {
+    if (!tour) return;
+    if (table && table.online) { toast('Leave the online room first'); return; }
+    if (table && store.game && !store.game.finished && !store.game.tutorial) { toast('Finish or quit this game first'); return; }
+    tour.reset();
+    if (ui.tab !== 'play') showTab('play', true);
+    const G = DC.GAME;
+    startGame({ tutorial: true, seed: G.seed, first: G.first, kingdom: G.kingdom, edition: G.edition, level: G.level, opps: G.opps, plan: DomSim.withCard('Smithy', 1) });
+    tour.start(0);
+  }
+  function offerTutorial() {
+    if (!DC || !tour || table || ui.online || ui.tab !== 'play' || COACH.offered(DC.ID)) return;
+    setTimeout(() => {
+      if (table || ui.online || ui.tab !== 'play') return;
+      COACH.offer({ id: DC.ID, title: 'New to Dominion?', text: 'Play one guided game against the Easy computer.', yes: 'Teach me', no: 'No thanks', onYes: startTutorial });
+    }, 600);
+  }
+  function dailyDone() {
+    try { return !!(window.Profile && window.Profile.daily.played()); } catch (e) { return false; }
+  }
+  function openStats(t) {
+    if (!window.Profile) return;
+    closeOverlays();
+    window.Profile.openPanel(t ? { tab: t } : undefined);
+    if (window.Profile.isOpen()) pushModal();
+  }
+  function startDaily() {
+    const P = window.Profile;
+    if (!P || !DP || ui.starting) return;
+    if (dailyDone()) { openStats('daily'); return; }
+    if (table && !table.online && !(store.game && store.game.finished)) { toast('Finish or quit this game first'); return; }
+    if (table && table.online) { toast('Leave the online room first'); return; }
+    if (P.isOpen()) P.closePanel();
+    const day = P.daily.date();
+    const k = DP.dailyKingdom(DomCards.pool(DP.DAILY.edition), P.daily.rng(day, 'dominion-kingdom'));
+    const seed = P.daily.seed(day, 'dominion-deal') >>> 0;
+    if (ui.tab !== 'play') showTab('play', true);
+    // everyone meets the same Hard computer, so wait for its plan for this kingdom
+    ui.starting = true; ui.planProgress = 0; renderPlay();
+    getPlan(k, DP.DAILY.edition, x => { ui.planProgress = x; const el = $('#dailyprog'); if (el) el.textContent = Math.round(x * 100) + '%'; }).then(r => {
+      ui.starting = false;
+      // something else started while the plan loaded (guided game, online room): leave it alone
+      if (table || ui.online) { renderPlay(); return; }
+      startGame({ daily: day, seed, kingdom: k, edition: DP.DAILY.edition, level: DP.DAILY.level, opps: DP.DAILY.opps, plan: r[0].strat });
+    }).catch(() => { ui.starting = false; toast('The Daily couldn’t start'); renderPlay(); });
   }
 
   // event time on the performance.now() clock (falls back to now if the browser gives something else)
   function tapTime(e) {
     const now = performance.now(), ts = e.timeStamp;
     return ts > 0 && ts <= now + 50 ? ts : now;
+  }
+  // laptop: pointing at a Supply pile shows it big in the side card box (only while nothing is picked)
+  const canHover = window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches;
+  function sideCard(name) {
+    const box = vPlay.querySelector('#g-side .cardbox');
+    if (!box || box.offsetParent === null || ui.hoverName === name) return;
+    ui.hoverName = name;
+    const show = name || ui.restCard;
+    box.innerHTML = show && CARDS[show] ? face(show, { size: 'big', cls: name ? '' : 'rest' }) : '<div class="spot">Tap a card</div>';
+  }
+  if (canHover) {
+    vPlay.addEventListener('mouseover', e => {
+      if (ui.sel || ui.look) return;
+      const tile = e.target.closest('[data-tile]');
+      const name = tile && CARDS[tile.dataset.tile] ? tile.dataset.tile : null;
+      sideCard(name);
+    });
+    vPlay.addEventListener('mouseleave', () => { if (!ui.sel && !ui.look) sideCard(null); });
   }
   vPlay.addEventListener('click', e => {
     const t = e.target;
@@ -462,7 +599,10 @@
       store.settings[key] = key === 'opps' ? Number(segb.dataset.v) : segb.dataset.v;
       save(); renderPlay(); return;
     }
-    if (t.closest('[data-start]')) { startGame(); return; }
+    if (t.closest('[data-start]')) { if (!ui.starting) startGame(); return; }
+    if (t.closest('[data-daily]')) { if (!ui.starting) startDaily(); return; }
+    if (t.closest('[data-rules]')) { openRules(); return; }
+    if (t.closest('[data-stats]')) { openStats(); return; }
     const on = t.closest('[data-on]');
     if (on) { onlineBtn(on.dataset.on); return; }
     const sb = t.closest('[data-seat]');
@@ -513,10 +653,16 @@
       table.room.act({ answer }).then(r => { if (!r.ok) { unbusy(); fxErr(); toast(r.message); renderGame(); } });
       return;
     }
+    const before = table.state, printBefore = infoPrint(table.view(ME));
     try { table.act(ME, answer); } catch (e) { fxErr(); toast(e.message); return; }
     store.game.state = table.state;
     const v = table.view(ME);
-    if (v.over && !store.game.finished) { store.game.finished = true; store.last = { state: table.state }; }
+    // keep the step for Undo only while nothing new has been seen; anything revealed wipes the Undo list
+    const g = store.game;
+    if (!g.undo) g.undo = [];
+    if (!v.over && infoPrint(v) === printBefore) { g.undo.push(before); if (g.undo.length > 12) g.undo.shift(); } else g.undo = [];
+    if (v.over && !g.finished) { g.finished = true; g.undo = []; store.last = { state: table.state }; recordGame(); }
+    if (window.COACH) COACH.emit('acted');
     save();
     resetSel();
     renderPlay();
@@ -581,8 +727,9 @@
       case 'log': sheet('What happened', logHTML(v)); break;
       case 'quit':
         if (table.online) confirmBox(v.over ? 'Leave this room?' : 'Leave this online game? A computer takes your seat.', 'Leave', leaveOnline);
-        else confirmBox('Quit this game? It can\'t be resumed.', 'Quit', () => { table = null; store.game = null; save(); resetSel(); renderPlay(); });
+        else confirmBox('Quit this game? It can\'t be resumed' + (store.game && !store.game.tutorial && !v.over && DP ? ' and counts as a loss in My stats.' : '.'), 'Quit', () => { if (!v.over) recordGame(); table = null; store.game = null; save(); resetSel(); renderPlay(); });
         break;
+      case 'undo': undo(); break;
       case 'new':
         if (table.online) { leaveOnline(); break; }
         table = null; store.game = null; save(); resetSel(); renderPlay(); break;
@@ -851,6 +998,7 @@
     const empty = Object.keys(v.supply).filter(k => v.supply[k] === 0).length;
     const emptyTag = empty ? '<span class="emptytag' + (empty >= 2 ? ' warn' : '') + '">Empty ' + empty + '</span>' : '';
     const opps = '<div class="opps"><div class="oppseats">' + seatsHTML + '</div>' + emptyTag +
+      (undoShown() && !v.over ? '<button class="icon-btn" data-btn="undo" aria-label="Undo" title="Undo"' + (canUndo() ? '' : ' disabled') + '><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button>' : '') +
       '<button class="icon-btn" id="btn-sheet-log" data-btn="log" aria-label="Log"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>' +
       '<button class="icon-btn" data-btn="quit" aria-label="Quit game"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>';
 
@@ -893,7 +1041,12 @@
       const c = CARDS[shown];
       p2 = '<b>' + esc(shown) + '</b> · $' + c.cost + ' · ' + esc(c.text) + (v.supply[shown] != null ? ' <span>(' + v.supply[shown] + ' left)</span>' : '');
     }
-    const infoCard = shown && CARDS[shown] ? face(shown, { size: 'big' }) : '<div class="spot">Tap a card</div>';
+    // nothing picked: the laptop card box shows the simulator's buy (hints on), else the last card anyone bought
+    let rest = null;
+    if (p && p.kind === 'buy' && s.hints && hint.length) rest = hint[0];
+    else for (let i = v.turns.length - 1; i >= 0 && !rest; i--) { const b = v.turns[i].bought; if (b && b.length) rest = b[b.length - 1]; }
+    ui.restCard = rest && CARDS[rest] ? rest : null;
+    const infoCard = shown && CARDS[shown] ? face(shown, { size: 'big' }) : ui.restCard ? face(ui.restCard, { size: 'big', cls: 'rest' }) : '<div class="spot">Tap a card</div>';
     const info = '<div class="info' + (mine ? ' mine' : '') + '"><div class="p1">' + p1 + '</div><div class="p2">' + p2 + '</div></div>';
 
     // the play area in front of whoever's turn it is (or the cards to choose from)
@@ -988,6 +1141,7 @@
       '<div class="panel logbox"><div class="label" style="margin-bottom:6px">What happened</div><div class="scroll">' + logHTML(v) + '</div></div></div>';
 
     dropFans();
+    ui.hoverName = null;
     vPlay.innerHTML = '<div id="game"><div id="table" class="tbl-surface tbl-wood-dark' + (v.over ? ' over' : '') + '">' + opps + supply + info + playRow + meRow +
       '<div class="bottom">' + odds + '<div class="acts">' + acts + '</div></div></div>' + side + '</div>';
 
@@ -1157,6 +1311,11 @@
       '<div class="seg" data-ed style="margin-top:8px"><button aria-pressed="' + (s.edition === 2) + '" data-v="2">2nd edition</button><button aria-pressed="' + (s.edition === 1) + '" data-v="1">1st edition</button><button aria-pressed="' + (s.edition === 'mix') + '" data-v="mix">Both</button></div>' +
       (table ? '<p class="muted" style="font-size:12.5px;margin:8px 0 0">Applies to your next game.</p>' : '') + '</div>' +
       '<div class="panel">' + sw('odds', 'Show odds', 'Chance of $5 / $6 / $8 next hand') + sw('hints', 'Buy hints', 'Light up what the simulator would buy') + '</div>' +
+      (DC || DP ? '<div class="panel">' +
+        (DC ? '<div class="setrow"><div class="grow"><b>Rules</b><span>How to play, in short sections.</span></div><button class="btn small" data-rules>Open</button></div>' +
+          '<div class="setrow"><div class="grow"><b>Guided game</b><span>One game against Easy with tips on screen.</span></div><button class="btn small" data-tutorial>Start</button></div>' : '') +
+        (DP ? '<div class="setrow"><div class="grow"><b>My stats</b><span>Wins per level, rating, awards and the Daily.</span></div><button class="btn small" data-stats>Open</button></div>' : '') +
+        '</div>' : '') +
       (FXON ? '<div class="panel"><span class="label">Sound &amp; effects</span><div id="fx-box"></div></div>' : '') +
       '<div class="panel"><div class="setrow"><div class="grow"><b>Online play</b><span>Friends on their own phones, any mix with computers.</span></div><button class="btn small" data-online>Open</button></div></div>' +
       '<div class="panel"><div class="setrow"><div class="grow"><b>Reset</b><span>Clears the saved game, last game and settings.</span></div><button class="btn small" data-reset>Reset</button></div></div>' +
@@ -1172,6 +1331,9 @@
       if (store.kingdom.some(c => pool.indexOf(c) < 0)) store.kingdom = randomKingdom();
       save(); renderSettings(); return;
     }
+    if (e.target.closest('[data-rules]')) { openRules(); return; }
+    if (e.target.closest('[data-stats]')) { openStats(); return; }
+    if (e.target.closest('[data-tutorial]')) { startTutorial(); return; }
     if (e.target.closest('[data-online]')) { if (!table) ui.online = true; showTab('play', true); if (table && !table.online) toast('Finish or quit the current game first'); return; }
     if (e.target.closest('[data-reset]')) confirmBox('Clear everything saved on this device?', 'Reset', () => {
       try { localStorage.removeItem(KEY); } catch (err) { /* ignore */ }
@@ -1184,12 +1346,35 @@
   });
 
   // ------------------------------------------------------------------ boot
+  if (DP) {
+    DP.init(startDaily);
+    window.Profile.onChange(what => {
+      if (what === 'close' && !ui.closingQuiet) modalClosedByHand();
+      if ((what === 'result' || what === 'me' || what === 'reset' || what === 'import') && ui.tab === 'play' && !table) renderPlay();
+    });
+  }
+  if (DC) {
+    const live = () => (table && !table.online && store.game && store.game.tutorial ? { v: table.view(ME) } : null);
+    tour = COACH.tour({
+      id: DC.ID, steps: DC.steps(live),
+      pauseIf: () => ui.tab !== 'play' || !live() || modalOpen(),
+      onStep: (i, st) => { if (st && st.onShow) st.onShow(); },
+    });
+    new MutationObserver(() => COACH.update()).observe(vPlay, { childList: true });
+    if (store.game && store.game.tutorial && !store.game.finished) tour.resume();
+  }
+  if (window.PWA) window.PWA.safeToReload = () => {
+    if (modalOpen() || ui.starting || (table && table.online) || store.online || planJobs[planKey(store.kingdom, rulesEd())]) return false;
+    // a game in progress is saved after every move; reload only between games or away from the table
+    return !table || (store.game && store.game.finished) || ui.tab !== 'play';
+  };
   const start = (location.hash || '').slice(1);
   if (['play', 'kingdom', 'study', 'settings'].indexOf(start) >= 0) ui.tab = start;
   try { history.replaceState({ tab: ui.tab }, '', '#' + ui.tab); } catch (e) { /* ignore */ }
   showTab(ui.tab, false);
   // warm the plan cache for the current kingdom so "Deal" is instant
   if (!table) getPlan(store.kingdom.slice(), rulesEd()).catch(() => {});
+  if (!table && !store.online) offerTutorial();
   // back into an online room after a reload
   if (store.online) {
     ui.online = true; net.connecting = true; renderPlay();
@@ -1213,5 +1398,5 @@
     resetSel(); closeOverlays();
     if (ui.tab === 'play') renderPlay();
   });
-  window.DomApp = { store, get table() { return table; }, act: a => act(a), net, ui, version: VERSION };
+  window.DomApp = { store, get table() { return table; }, act: a => act(a), net, ui, version: VERSION, startGame, startDaily, startTutorial, undo, canUndo, openRules, openStats };
 })();
