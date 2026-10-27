@@ -18,21 +18,24 @@
     return { id: 'bm', label: 'Big Money', buy: END.concat([{ card: 'Gold' }, { card: 'Duchy', prov: 6 }, { card: 'Silver' }]) };
   }
   // Big Money plus one kingdom card. Terminals (no +Action) are capped so they don't collide.
-  function withCard(x, k, tuned) {
+  // early: the card comes before Gold and the 2nd copy at 11 cards (tuned per card, 2026-10-27: Witch 64% -> 76%
+  // vs Big Money + Witch, Militia 60% -> 63%; scratchpad tune.js).
+  function withCard(x, k, tuned, early) {
     const nonTerm = Bots.NON_TERMINAL.has(x);
     const rules = [];
     // cheap cantrips would crowd out Silver, so they're capped at 2
     if (nonTerm) rules.push({ card: x, upTo: CARDS[x].cost >= 5 ? 8 : 2 });
     else {
       rules.push({ card: x, upTo: 1 });
-      if (k >= 2) rules.push({ card: x, upTo: 2, minDeck: 16 });
+      if (k >= 2) rules.push({ card: x, upTo: 2, minDeck: early ? 11 : 16 });
       if (k >= 3) rules.push({ card: x, upTo: 3, minDeck: 24 });
     }
-    const pre = CARDS[x].cost >= 6 ? rules : [];
-    const post = CARDS[x].cost >= 6 ? [] : rules;
-    const label = nonTerm ? 'Big Money + ' + plural(x) : 'Big Money + ' + (k > 1 ? k + ' ' + plural(x) : x);
+    const first = early || CARDS[x].cost >= 6;
+    const pre = first ? rules : [];
+    const post = first ? [] : rules;
+    const label = (nonTerm ? 'Big Money + ' + plural(x) : 'Big Money + ' + (k > 1 ? k + ' ' + plural(x) : x)) + (early ? ', early' : '');
     return {
-      id: 'bm+' + x + (nonTerm ? '' : ':' + k) + (tuned ? '+t' : ''), label, ppr: !!tuned, key: x,
+      id: 'bm+' + x + (nonTerm ? '' : ':' + k) + (tuned ? '+t' : '') + (early ? 'e' : ''), label, ppr: !!tuned, key: x,
       buy: (tuned ? END_T : END).concat(pre, [{ card: 'Gold' }, { card: 'Duchy', prov: 6 }], post, [{ card: 'Silver' }]),
     };
   }
@@ -58,12 +61,15 @@
   }
 
   // Hard's candidate plans (all with the tuned endgame).
-  function candidates(kingdom) {
+  function candidates(kingdom, v) {
     const out = [Object.assign(bigMoney(), { id: 'bm+t', ppr: true, buy: END_T.concat([{ card: 'Gold' }, { card: 'Duchy', prov: 6 }, { card: 'Silver' }]) })];
     for (const x of kingdom) {
       if (is(x, 'Victory')) continue;
       if (Bots.NON_TERMINAL.has(x)) out.push(withCard(x, 1, true));
-      else { out.push(withCard(x, 1, true)); out.push(withCard(x, 2, true)); }
+      else {
+        out.push(withCard(x, 1, true)); out.push(withCard(x, 2, true));
+        if (v >= 2 && CARDS[x].cost < 6 && CARDS[x].cost >= 3) out.push(withCard(x, 2, true, true));
+      }
     }
     // two different terminals: the three best singles by the measured table, paired
     const tab = Strength && Strength.byCard;
@@ -107,13 +113,16 @@
   }
 
   // Best simple plan for a kingdom. Stage 1: every candidate vs Big Money (singles use the
-  // measured table when present). Stage 2: the top few play a round robin; best average wins.
+  // measured table when present). Stage 2: the top few play a round robin, plus (v2) a match vs Medium's
+  // plan counted as one more rival; best average wins. v1 -> v2 + endgame sense: Hard vs Medium 56% -> 60%
+  // (40 kingdoms x 200 games, 2026-10-27).
   function findBest(kingdom, opts) {
     opts = opts || {};
     const n1 = opts.n1 || 60, n2 = opts.n2 || 120, top = opts.top || 4;
     const seed = hashKingdom(kingdom);
     const bm = bigMoney();
-    const cands = candidates(kingdom);
+    const v = opts.v == null ? PLAN_V : opts.v;
+    const cands = candidates(kingdom, v);
     const table = opts.table === undefined ? (Strength && Strength.byId) : opts.table;
     const scored = [];
     let done = 0;
@@ -124,10 +133,11 @@
       else w = versus(kingdom, c, bm, n1, seed + done, opts);
       scored.push({ strat: c, vsBM: w });
       done++;
-      if (opts.onProgress) opts.onProgress(done / (cands.length + top * (top - 1) / 2));
+      if (opts.onProgress) opts.onProgress(done / (cands.length + top * (top - 1) / 2 + (v >= 2 ? top : 0)));
     }
     scored.sort((a, b) => b.vsBM - a.vsBM);
     const short = scored.slice(0, top);
+    const med = v >= 2 ? mediumFor(kingdom) : null;
     const tot = short.map(() => 0);
     let pairs = 0;
     for (let i = 0; i < short.length; i++) {
@@ -135,10 +145,15 @@
         const w = versus(kingdom, short[i].strat, short[j].strat, n2, seed + 1000 + pairs * 31, opts);
         tot[i] += w; tot[j] += 1 - w;
         pairs++;
-        if (opts.onProgress) opts.onProgress((cands.length + pairs) / (cands.length + top * (top - 1) / 2));
+        if (opts.onProgress) opts.onProgress((cands.length + pairs) / (cands.length + top * (top - 1) / 2 + (v >= 2 ? top : 0)));
       }
     }
-    short.forEach((s, i) => { s.rr = short.length > 1 ? tot[i] / (short.length - 1) : 1; });
+    // v2: each finalist also plays Medium's plan (the money player it must beat), counted like one more rival
+    const opps = short.length - 1 + (v >= 2 ? 1 : 0);
+    if (v >= 2) {
+      short.forEach((s, i) => { s.vsMed = versus(kingdom, s.strat, med, n2, seed + 3000 + i * 37, opts); tot[i] += s.vsMed; if (opts.onProgress) opts.onProgress((cands.length + pairs + i + 1) / (cands.length + pairs + short.length)); });
+    }
+    short.forEach((s, i) => { s.rr = opps > 0 ? tot[i] / opps : 1; });
     short.sort((a, b) => b.rr - a.rr);
     return { ranked: short, all: scored };
   }
@@ -172,6 +187,8 @@
   // The Hard computer: its plan for this kingdom, plus endgame sense (never ends the game on a losing buy,
   // takes a winning game-ending buy). Old saved games keep their plain plan, so they replay the same.
   const HARD = { smart: true };
+  // Version of Hard's plan search; the app keys its plan cache on it so old cached plans are searched again.
+  const PLAN_V = 2;
   function hardFor(plan) { return Object.assign({}, plan, HARD); }
 
   // What a plan buys on its first two turns, for the two possible opening splits ($4/$3 and $5/$2).
@@ -189,5 +206,5 @@
     return out;
   }
 
-  return { opening, hardFor, HARD, bigMoney, withCard, twoCards, villageDraw, gardens, candidates, playGame, versus, findBest, quickPlan, mediumFor, hashKingdom };
+  return { opening, hardFor, HARD, PLAN_V, bigMoney, withCard, twoCards, villageDraw, gardens, candidates, playGame, versus, findBest, quickPlan, mediumFor, hashKingdom };
 });

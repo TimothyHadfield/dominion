@@ -12,7 +12,7 @@
   const COLORS = ['#f0b354', '#6ea8fe', '#e98bd0', '#6ee7a8'];
   const LEVEL_NOTE = { easy: 'Big Money', medium: 'Money + 1 card', hard: 'Best plan' };
   // Measured by tools/measure-levels.js 100 60 (100 random kingdoms x 60 games per pairing), 2026-10-19.
-  const STRENGTH_NOTE = { games: '6,000', hardEasy: '80%', hardMedium: '55%', mediumEasy: '77%' };
+  const STRENGTH_NOTE = { games: '6,000', hardEasy: '82%', hardMedium: '60%', mediumEasy: '77%' }; // tools/measure-levels.js 100 60, 2026-10-27
 
   // ------------------------------------------------------------------ storage
   function fresh() {
@@ -53,7 +53,9 @@
   }
   const byCost = (a, b) => CARDS[a].cost - CARDS[b].cost || a.localeCompare(b);
   if (!store.kingdom || store.kingdom.length !== 10 || store.kingdom.some(c => !CARDS[c])) store.kingdom = DomCards.PRESETS[0].cards.slice();
-  const planKey = (k, ed) => k.slice().sort().join('|') + '#' + ed;
+  // Hard's plan cache, keyed by kingdom + rules + the plan-search version (older versions' plans are dropped)
+  const planKey = (k, ed) => k.slice().sort().join('|') + '#' + ed + '#v' + (DomSim.PLAN_V || 1);
+  if (store.plans) Object.keys(store.plans).forEach(key => { if (!/#v\d+$/.test(key) || !key.endsWith('#v' + (DomSim.PLAN_V || 1))) delete store.plans[key]; });
 
   let worker = null;
   const waiting = {};
@@ -61,7 +63,7 @@
   function getWorker() {
     if (worker !== null) return worker;
     try {
-      worker = new Worker('js/worker.js?v=3');
+      worker = new Worker('js/worker.js?v=4');
       worker.onmessage = e => {
         const w = waiting[e.data.id];
         if (!w) return;
@@ -564,6 +566,24 @@
     const now = performance.now(), ts = e.timeStamp;
     return ts > 0 && ts <= now + 50 ? ts : now;
   }
+  // laptop: pointing at a Supply pile shows it big in the side card box (only while nothing is picked)
+  const canHover = window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches;
+  function sideCard(name) {
+    const box = vPlay.querySelector('#g-side .cardbox');
+    if (!box || box.offsetParent === null || ui.hoverName === name) return;
+    ui.hoverName = name;
+    const show = name || ui.restCard;
+    box.innerHTML = show && CARDS[show] ? face(show, { size: 'big', cls: name ? '' : 'rest' }) : '<div class="spot">Tap a card</div>';
+  }
+  if (canHover) {
+    vPlay.addEventListener('mouseover', e => {
+      if (ui.sel || ui.look) return;
+      const tile = e.target.closest('[data-tile]');
+      const name = tile && CARDS[tile.dataset.tile] ? tile.dataset.tile : null;
+      sideCard(name);
+    });
+    vPlay.addEventListener('mouseleave', () => { if (!ui.sel && !ui.look) sideCard(null); });
+  }
   vPlay.addEventListener('click', e => {
     const t = e.target;
     const go = t.closest('[data-go]');
@@ -1016,7 +1036,12 @@
       const c = CARDS[shown];
       p2 = '<b>' + esc(shown) + '</b> · $' + c.cost + ' · ' + esc(c.text) + (v.supply[shown] != null ? ' <span>(' + v.supply[shown] + ' left)</span>' : '');
     }
-    const infoCard = shown && CARDS[shown] ? face(shown, { size: 'big' }) : '<div class="spot">Tap a card</div>';
+    // nothing picked: the laptop card box shows the simulator's buy (hints on), else the last card anyone bought
+    let rest = null;
+    if (p && p.kind === 'buy' && s.hints && hint.length) rest = hint[0];
+    else for (let i = v.turns.length - 1; i >= 0 && !rest; i--) { const b = v.turns[i].bought; if (b && b.length) rest = b[b.length - 1]; }
+    ui.restCard = rest && CARDS[rest] ? rest : null;
+    const infoCard = shown && CARDS[shown] ? face(shown, { size: 'big' }) : ui.restCard ? face(ui.restCard, { size: 'big', cls: 'rest' }) : '<div class="spot">Tap a card</div>';
     const info = '<div class="info' + (mine ? ' mine' : '') + '"><div class="p1">' + p1 + '</div><div class="p2">' + p2 + '</div></div>';
 
     // the play area in front of whoever's turn it is (or the cards to choose from)
@@ -1111,6 +1136,7 @@
       '<div class="panel logbox"><div class="label" style="margin-bottom:6px">What happened</div><div class="scroll">' + logHTML(v) + '</div></div></div>';
 
     dropFans();
+    ui.hoverName = null;
     vPlay.innerHTML = '<div id="game"><div id="table" class="tbl-surface tbl-wood-dark' + (v.over ? ' over' : '') + '">' + opps + supply + info + playRow + meRow +
       '<div class="bottom">' + odds + '<div class="acts">' + acts + '</div></div></div>' + side + '</div>';
 
