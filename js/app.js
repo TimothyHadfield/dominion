@@ -120,7 +120,7 @@
   const net = { room: null, snap: null, busy: false, sentV: null, timer: null, savedLast: false, connecting: false };
   function loadOnline() {
     if (net.room) return Promise.resolve(net.room);
-    return import(new URL('js/online.js?v=1', location.href).href).then(mod => {
+    return import(new URL('js/online.js?v=a3d0418b', location.href).href).then(mod => {
       if (net.room) return net.room;
       net.room = mod.createOnline({ game: DomOnlineGame.game, gameId: 'dominion', botDelayMs: 700 });
       net.room.on('change', onNet);

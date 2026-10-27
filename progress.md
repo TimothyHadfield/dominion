@@ -72,6 +72,7 @@ Left: setup at 320x460 (SE with a browser bar) still hides "How Dominion works" 
 Other players' sounds play at 0.75 volume. A whole computer turn is spaced out over ≤ 2.6 s; Fast = 0.55×.
 
 ## Traps
+- **online.js cache stamp (2026-10-27):** every import of `js/online.js` uses `?v=a3d0418b`, the `_online` content stamp. After a re-copy: put the new stamp from `node ../_online/tools/stamp.mjs` there, bump the importing file's `?v=` (and pwa.js `data-version`), then `node ../_online/tools/stamp.mjs --check .` must say OK.
 - `js/online.js` is a COPY of `../_online/online.js`. Never edit it here; recopy when the shared module changes.
 - After changing any strategy in js/sim.js or js/bots.js: rerun `node tools/build-strength.js` (about 2.5 min) and `node tools/measure-levels.js`, then update STRENGTH_NOTE in js/app.js.
 - No build step: bump `?v=` in index.html when changing a js file after the first deploy.
