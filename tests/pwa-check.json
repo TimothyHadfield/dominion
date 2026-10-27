@@ -1,0 +1,10 @@
+{
+  "repo": "dominion",
+  "ready": "!!(window.DomApp && document.querySelector('#v-play [data-start], #v-play .hand'))",
+  "play": [
+    "(async () => { const w = ms => new Promise(r => setTimeout(r, ms)); if (window.COACH && COACH.closeOffer) COACH.closeOffer(); const A = DomApp; if (!A.table) A.startGame({ seed: 7, first: 0, kingdom: ['Cellar', 'Market', 'Merchant', 'Militia', 'Mine', 'Moat', 'Remodel', 'Smithy', 'Village', 'Workshop'], edition: 2, level: 'easy', opps: 1 }); await w(300); window.__n = A.table.state.actions.length; window.__turns = A.table.view(0).turns.length; for (let i = 0; i < 6; i++) { const v = A.table.view(0); const p = v.pending; if (!p) { await w(100); continue; } if (p.kind === 'action') { A.ui.btnLock = 0; A.act(-1); await w(150); continue; } if (p.kind === 'buy') { A.ui.btnLock = 0; A.act(v.coins >= 3 ? 'Silver' : null); break; } break; } })()"
+  ],
+  "played": "(() => { const t = DomApp.table; if (!t) return false; const v = t.view(0); return t.state.actions.length > window.__n && v.turns.length >= window.__turns + 2 && !!v.pending && !v.over; })()",
+  "safe": "(() => { const b = document.querySelector('[data-tab=\"settings\"]'); if (b) b.click(); })()",
+  "debug": "JSON.stringify((() => { const t = DomApp.table; if (!t) return null; const v = t.view(0); return { n: t.state.actions.length, before: window.__n, turns: v.turns.length, turnsBefore: window.__turns, pending: v.pending && v.pending.kind, over: v.over }; })())"
+}

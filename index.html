@@ -8,7 +8,14 @@
 <meta name="theme-color" content="#0f1117">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Dominion Lab">
 <link rel="stylesheet" href="css/table.css?v=1">
+<link rel="stylesheet" href="css/profile.css?v=1">
+<link rel="stylesheet" href="css/coach.css?v=1">
 <style>
   :root {
     --bg: #0f1117; --bg-soft: #161923; --card: #1a1e2b; --card-hover: #212636; --line: #2a3042;
@@ -357,6 +364,10 @@
   .main-setup .pb { border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; padding-top: 5px; margin-top: -10px; }
   .dealrow { display: flex; flex-direction: column; gap: 10px; }
   .dealrow .btn { width: 100%; }
+  .morerow { display: flex; gap: 8px; }
+  .morerow .btn { flex: 1; width: auto; min-width: 0; padding: 0 10px; }
+  .hero .pf-open svg { flex: none; }
+  .icon-btn:disabled { opacity: .35; cursor: default; }
   /* short phones (SE): smaller title, Deal and Play online side by side */
   @media (max-width: 899px) and (max-height: 620px) {
     .setup { gap: 8px; }
@@ -525,16 +536,21 @@
 </div>
 
 <script src="js/cards.js?v=1"></script>
-<script src="js/bots.js?v=1"></script>
+<script src="js/bots.js?v=2"></script>
 <script src="js/odds.js?v=1"></script>
 <script src="js/engine.js?v=2"></script>
 <script src="js/strength-data.js?v=1"></script>
-<script src="js/sim.js?v=1"></script>
+<script src="js/sim.js?v=2"></script>
 <script src="js/online-game.js?v=2"></script>
 <script src="js/art.js?v=2"></script>
-<script src="js/fx.js?v=2"></script>
+<script src="js/fx.js?v=3"></script>
 <script src="js/table.js?v=1"></script>
 <script src="js/dom-fx.js?v=2"></script>
-<script src="js/app.js?v=8"></script>
+<script src="js/profile.js?v=1"></script>
+<script src="js/domprofile.js?v=1"></script>
+<script src="js/coach.js?v=1"></script>
+<script src="js/domcoach.js?v=1"></script>
+<script src="js/pwa.js?v=9" data-version="9"></script>
+<script src="js/app.js?v=9"></script>
 </body>
 </html>

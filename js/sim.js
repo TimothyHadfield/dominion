@@ -169,6 +169,11 @@
     return best;
   }
 
+  // The Hard computer: its plan for this kingdom, plus endgame sense (never ends the game on a losing buy,
+  // takes a winning game-ending buy). Old saved games keep their plain plan, so they replay the same.
+  const HARD = { smart: true };
+  function hardFor(plan) { return Object.assign({}, plan, HARD); }
+
   // What a plan buys on its first two turns, for the two possible opening splits ($4/$3 and $5/$2).
   function opening(strat, kingdom) {
     const supply = Engine.supplyFor(kingdom, 2);
@@ -184,5 +189,5 @@
     return out;
   }
 
-  return { opening, bigMoney, withCard, twoCards, villageDraw, gardens, candidates, playGame, versus, findBest, quickPlan, mediumFor, hashKingdom };
+  return { opening, hardFor, HARD, bigMoney, withCard, twoCards, villageDraw, gardens, candidates, playGame, versus, findBest, quickPlan, mediumFor, hashKingdom };
 });

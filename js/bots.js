@@ -77,7 +77,58 @@
   function ctxFor(g, p, coins) {
     return { coins, counts: deckCounts(p), supply: g.supply, provScale: g.startProvinces / 8, g, p };
   }
-  function chooseBuy(strat, g, p) { return ruleCard(strat, ctxFor(g, p, g.coins)); }
+  function chooseBuy(strat, g, p) {
+    const ctx = ctxFor(g, p, g.coins);
+    return strat.smart ? smartBuy(strat, ctx) : ruleCard(strat, ctx);
+  }
+
+  // ---- Hard's endgame sense (strategies with smart: true) ----
+  // Score race if the game ended right after this player gains `card` (null = gains nothing):
+  // 1 = win, 0.5 = shared win, 0 = loss. Ties go to the player with fewer turns (the real rule).
+  function endOutcome(g, p, card) {
+    const m = deckCounts(p);
+    if (card) { m[card] = (m[card] || 0) + 1; m.__total++; }
+    const mine = vpFromCounts(m);
+    let res = 1;
+    for (const o of g.players) {
+      if (o === p) continue;
+      const v = g.vp(o);
+      if (v > mine) return 0;
+      if (v === mine) {
+        if (o.turns < p.turns) return 0;
+        if (o.turns === p.turns) res = 0.5;
+      }
+    }
+    return res;
+  }
+  function endsGame(g, card) {
+    const s = g.supply;
+    if (card === 'Province' && s.Province === 1) return true;
+    let empty = 0;
+    for (const k in s) if (s[k] === 0 || (k === card && s[k] === 1)) empty++;
+    return empty >= (g.n >= 5 ? 4 : 3);
+  }
+  function affordable(g, coins) {
+    return Object.keys(g.supply).filter(n => g.supply[n] > 0 && CARDS[n].cost <= coins);
+  }
+  function smartBuy(strat, ctx) {
+    const { g, p } = ctx;
+    const opts = affordable(g, ctx.coins);
+    // 1. Take a game-ending gain that wins (most points first).
+    let best = null, bv = -1;
+    for (const c of opts) {
+      if (!endsGame(g, c)) continue;
+      const o = endOutcome(g, p, c);
+      const v = o * 100 + (CARDS[c].vp || 0);
+      if (o === 1 && v > bv) { bv = v; best = c; }
+    }
+    if (best) return best;
+    // 2. Never end the game on a buy we'd lose; walk down the plan instead.
+    const banned = new Set(opts.filter(c => endsGame(g, c) && endOutcome(g, p, c) < 0.5));
+    const sub = Object.assign({}, ctx, { supply: Object.assign({}, ctx.supply) });
+    for (const c of banned) sub.supply[c] = 0;
+    return ruleCard(strat, sub);
+  }
 
   // The whole buy phase this strategy would make with `coins` and `buys` (used for hints and study).
   function planBuys(strat, g, p, coins, buys) {
@@ -245,5 +296,5 @@
     return null;
   }
 
-  return { decide, planBuys, chooseBuy, ruleCard, keepValue, PLAY_ORDER, NON_TERMINAL, deckCounts };
+  return { decide, planBuys, chooseBuy, ruleCard, smartBuy, endOutcome, endsGame, keepValue, PLAY_ORDER, NON_TERMINAL, deckCounts };
 });
