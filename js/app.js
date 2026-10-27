@@ -465,7 +465,10 @@
   // move showed nothing new (no card drawn or revealed, no other player's cards moved). Like the
   // official app's "undo until new information".
   function infoPrint(v) {
-    return v.cur + '|' + v.turns.length + '|' + v.players.map(pl => pl.seat === ME ? String(pl.drawSize) :
+    // the last thing another player did or showed (a Moat reveal moves no cards but is new information)
+    let other = '';
+    for (let i = (v.log || []).length - 1; i >= 0; i--) { const l = v.log[i]; if (l.p >= 0 && l.p !== ME) { other = l.r + ':' + l.p + ':' + l.text; break; } }
+    return v.cur + '|' + v.turns.length + '|' + other + '|' + v.players.map(pl => pl.seat === ME ? String(pl.drawSize) :
       [pl.drawSize, pl.handSize, pl.discardSize, pl.play.length, pl.total].join(':')).join('|');
   }
   function undoShown() {
@@ -544,7 +547,7 @@
   }
   function startDaily() {
     const P = window.Profile;
-    if (!P || !DP) return;
+    if (!P || !DP || ui.starting) return;
     if (dailyDone()) { openStats('daily'); return; }
     if (table && !table.online && !(store.game && store.game.finished)) { toast('Finish or quit this game first'); return; }
     if (table && table.online) { toast('Leave the online room first'); return; }
@@ -557,6 +560,8 @@
     ui.starting = true; ui.planProgress = 0; renderPlay();
     getPlan(k, DP.DAILY.edition, x => { ui.planProgress = x; const el = $('#dailyprog'); if (el) el.textContent = Math.round(x * 100) + '%'; }).then(r => {
       ui.starting = false;
+      // something else started while the plan loaded (guided game, online room): leave it alone
+      if (table || ui.online) { renderPlay(); return; }
       startGame({ daily: day, seed, kingdom: k, edition: DP.DAILY.edition, level: DP.DAILY.level, opps: DP.DAILY.opps, plan: r[0].strat });
     }).catch(() => { ui.starting = false; toast('The Daily couldn’t start'); renderPlay(); });
   }
