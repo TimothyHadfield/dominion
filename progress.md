@@ -2,7 +2,7 @@
 
 ## START HERE
 Read order: this file → CLAUDE.md → docs/rules-check.md → docs/ideas.md → chat.md.
-Last updated: 2026-10-27 (Hard 2nd pass: endgame look-ahead; before that the improvement pass: Undo, Daily, My stats, guided game + Rules, install, art).
+Last updated: 2026-10-28 (kit sweep: `_coach` 1.1.0, `_pwa` 1.3.0, `_profile` 1.1.0 byte-identical; pwa data-version 14; no data-extra needed: worker.js, its importScripts and online.js are all in the offline cache, checked in WebKit; pwa-check 18/18). Before that: 2026-10-27 (Hard 2nd pass: endgame look-ahead; before that the improvement pass: Undo, Daily, My stats, guided game + Rules, install, art).
 Live: https://timothyhadfield.github.io/dominion/ · Repo: https://github.com/TimothyHadfield/dominion
 
 ## Goal right now
@@ -13,7 +13,7 @@ Dominion base game (1st + 2nd edition) vs 1–3 computers or online friends, wit
 |---|---|
 | Engine (all 39 base cards, both editions, 2–4 players) | Done. 26 engine tests. |
 | Computers Easy / Medium / Hard | Done, measured 2026-10-27 (`node tools/measure-levels.js 100 60`, 6,000 games a pair): Hard beats Easy 84.5% (was 82.3%), Medium 63.1% (was 59.9%, 55.3% before that); Medium beats Easy 76.8%. Ratings 1200 / 1410 / 1500. Hard = plan search v2 + endgame sense (`smart`) + endgame look-ahead (`look`: bots.js rollBuy, rollouts once ≤3 Provinces left or 2 piles ≤2). Decision time on the laptop: avg 45 ms, max 115 ms (2 players) / 165 ms (4 players, 3 Hard). Target 65% vs Medium NOT reached. |
-| Improvement pass (2026-10-27) | Undo in your own turn until something new shows (not Daily/guided; game counts "with help"); Daily kingdom vs Hard (same kingdom + shuffles for everyone, local best + streak); My stats + 10 achievements (`_profile` 1.1.0, js/domprofile.js); guided first game (9 steps) + Rules sheet (`_coach`, js/domcoach.js); home-screen install + offline (`_pwa` 1.2.0, pwa-check 18/18); fx.js re-copied; art finish (clouds/stars/sun, coin shine, vignette); Province chime, pile-out flash, last-2-Provinces pulse; laptop card box shows the hovered pile, else the sim's buy or last card bought. |
+| Improvement pass (2026-10-27) | Undo in your own turn until something new shows (not Daily/guided; game counts "with help"); Daily kingdom vs Hard (same kingdom + shuffles for everyone, local best + streak); My stats + 10 achievements (`_profile` 1.1.0, js/domprofile.js); guided first game (9 steps) + Rules sheet (`_coach`, js/domcoach.js); home-screen install + offline (`_pwa` 1.3.0 since 10-28, pwa-check 18/18); fx.js re-copied; art finish (clouds/stars/sun, coin shine, vignette); Province chime, pile-out flash, last-2-Provinces pulse; laptop card box shows the hovered pile, else the sim's buy or last card bought. |
 | Odds bar + deck tracker | Done (exact math). |
 | Kingdom tab: presets, Random, swap, card %, best plan, opening | Done. Plan finder runs in a Web Worker. |
 | Study tab: buys vs sim, draw luck, points race | Done. |
