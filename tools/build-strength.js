@@ -8,11 +8,17 @@ const C = require('../js/cards.js');
 const S = require('../js/sim.js');
 
 const N = Number(process.argv[2]) || 2000;
-const all = C.pool('mix');
+// --intrigue: measure only the Intrigue cards and merge them into the existing table (base numbers stay as they were)
+const ONLY = process.argv.indexOf('--intrigue') >= 0 ? new Set(C.INTRIGUE) : null;
+const all = C.pool('mix', 'both');
 const bm = S.bigMoney();
-const byId = {}, byCard = {};
+let old = null;
+try { old = require('../js/strength-data.js'); } catch (e) { /* first build */ }
+const byId = ONLY && old ? Object.assign({}, old.byId) : {}, byCard = ONLY && old ? Object.assign({}, old.byCard) : {};
 const t0 = Date.now();
 for (const x of all) {
+  if (ONLY && !ONLY.has(x)) continue;
+  if (x === 'Duke') continue; // a pure Victory card: no 'Big Money + Duke' (Hard has its own Duke plan)
   const filler = all.filter(y => y !== x && y !== 'Gardens').slice(0, 9);
   const kingdom = [x].concat(filler);
   const ed = C.CARDS[x].ed === 1 ? 1 : 2;

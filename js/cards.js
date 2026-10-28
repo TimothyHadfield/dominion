@@ -57,12 +57,44 @@
   def('Thief', 4, ['Action', 'Attack'], 1, 'Others flip 2 cards; you trash a Treasure among them and may take it.');
   def('Adventurer', 6, ['Action'], 1, 'Flip cards from your deck until you find 2 Treasures; take them into your hand.');
 
+  // ---- Intrigue (second edition, 26 kingdom cards). set: 'intrigue'. Card text is our own wording.
+  const I = (name, cost, types, text, o) => def(name, cost, types, 2, text, Object.assign({ set: 'intrigue' }, o || {}));
+  I('Courtyard', 2, ['Action'], '+3 Cards. Put a card from your hand onto your deck.', { plus: { cards: 3 } });
+  I('Lurker', 2, ['Action'], '+1 Action. Either trash an Action card from the Supply, or gain an Action card from the trash.', { plus: { actions: 1 } });
+  I('Pawn', 2, ['Action'], 'Pick two different: +1 Card, +1 Action, +1 Buy, +$1.');
+  I('Masquerade', 3, ['Action'], '+2 Cards. Everyone holding cards passes one to the next such player on their left, all at once. Then you may trash a card from your hand.', { plus: { cards: 2 } });
+  I('Shanty Town', 3, ['Action'], '+2 Actions. Show your hand: if it has no Action cards, +2 Cards.', { plus: { actions: 2 } });
+  I('Steward', 3, ['Action'], 'Pick one: +2 Cards, or +$2, or trash 2 cards from your hand.');
+  I('Swindler', 3, ['Action', 'Attack'], '+$2. Each other player trashes their top card and gains a card of the same cost that you pick.', { plus: { coins: 2 } });
+  I('Wishing Well', 3, ['Action'], '+1 Card, +1 Action. Name a card and flip your top card: if you named it, take it into your hand.', { plus: { cards: 1, actions: 1 } });
+  I('Baron', 4, ['Action'], '+1 Buy. You may discard an Estate for +$4. If you don\'t, gain an Estate.', { plus: { buys: 1 } });
+  I('Bridge', 4, ['Action'], '+1 Buy, +$1. Every card costs $1 less this turn (not below $0).', { plus: { buys: 1, coins: 1 } });
+  I('Conspirator', 4, ['Action'], '+$2. If this is at least your 3rd Action played this turn: +1 Card, +1 Action.', { plus: { coins: 2 } });
+  I('Diplomat', 4, ['Action', 'Reaction'], '+2 Cards; then if you hold 5 or fewer cards, +2 Actions. When someone attacks and you hold 5+ cards, you may show this to draw 2, then discard 3.', { plus: { cards: 2 } });
+  I('Ironworks', 4, ['Action'], 'Gain a card costing up to $4. Action: +1 Action. Treasure: +$1. Victory: +1 Card.');
+  I('Mill', 4, ['Action', 'Victory'], '+1 Card, +1 Action. You may discard 2 cards for +$2. Worth 1 point.', { plus: { cards: 1, actions: 1 }, vp: 1 });
+  I('Mining Village', 4, ['Action'], '+1 Card, +2 Actions. You may trash this card for +$2.', { plus: { cards: 1, actions: 2 } });
+  I('Secret Passage', 4, ['Action'], '+2 Cards, +1 Action. Put a card from your hand anywhere in your deck.', { plus: { cards: 2, actions: 1 } });
+  I('Courtier', 5, ['Action'], 'Show a card from your hand. For each type it has, pick a different one: +1 Action, +1 Buy, +$3, or gain a Gold.');
+  I('Duke', 5, ['Victory'], '1 point for each Duchy you own.');
+  I('Minion', 5, ['Action', 'Attack'], '+1 Action. Pick one: +$2; or discard your hand and draw 4, and everyone else holding 5+ cards does the same.', { plus: { actions: 1 } });
+  I('Patrol', 5, ['Action'], '+3 Cards. Flip your top 4 cards: Victory cards and Curses go into your hand, the rest back on top in any order.', { plus: { cards: 3 } });
+  I('Replace', 5, ['Action', 'Attack'], 'Trash a card from your hand; gain one costing up to $2 more. Action or Treasure: it goes onto your deck. Victory: everyone else gains a Curse.');
+  I('Torturer', 5, ['Action', 'Attack'], '+3 Cards. Everyone else picks: discard 2 cards, or take a Curse into their hand.', { plus: { cards: 3 } });
+  I('Trading Post', 5, ['Action'], 'Trash 2 cards from your hand. If you did, gain a Silver into your hand.');
+  I('Upgrade', 5, ['Action'], '+1 Card, +1 Action. Trash a card from your hand; gain one costing exactly $1 more.', { plus: { cards: 1, actions: 1 } });
+  I('Farm', 6, ['Treasure', 'Victory'], '$2. Worth 2 points. (Called Harem in older printings.)', { coin: 2, vp: 2 });
+  I('Nobles', 6, ['Action', 'Victory'], 'Pick one: +3 Cards or +2 Actions. Worth 2 points.', { vp: 2 });
+
   const BASICS = ['Copper', 'Silver', 'Gold', 'Estate', 'Duchy', 'Province', 'Curse'];
-  const ALL_KINGDOM = Object.keys(CARDS).filter(n => !BASICS.includes(n));
+  const ALL_KINGDOM = Object.keys(CARDS).filter(n => !BASICS.includes(n) && !CARDS[n].set);
+  const INTRIGUE = Object.keys(CARDS).filter(n => CARDS[n].set === 'intrigue');
   // edition: 2 = second edition set (26 cards), 1 = first edition set (25), 'mix' = all 32
-  function pool(edition) {
-    if (edition === 'mix') return ALL_KINGDOM.slice();
-    return ALL_KINGDOM.filter(n => CARDS[n].ed === 0 || CARDS[n].ed === Number(edition));
+  // cards: 'base' (default) = base game only, 'both' = base + Intrigue, 'intrigue' = Intrigue only
+  function pool(edition, cards) {
+    if (cards === 'intrigue') return INTRIGUE.slice();
+    const base = edition === 'mix' ? ALL_KINGDOM.slice() : ALL_KINGDOM.filter(n => CARDS[n].ed === 0 || CARDS[n].ed === Number(edition));
+    return cards === 'both' ? base.concat(INTRIGUE) : base;
   }
 
   // Suggested opening sets printed in the rulebooks (card lists are game facts).
@@ -78,8 +110,23 @@
     { name: 'Interaction', ed: 1, cards: ['Bureaucrat', 'Chancellor', 'Council Room', 'Festival', 'Library', 'Militia', 'Moat', 'Spy', 'Thief', 'Village'] },
     { name: 'Size Distortion (1st ed.)', ed: 1, cards: ['Cellar', 'Chapel', 'Feast', 'Gardens', 'Laboratory', 'Thief', 'Village', 'Witch', 'Woodcutter', 'Workshop'] },
     { name: 'Village Square', ed: 1, cards: ['Bureaucrat', 'Cellar', 'Festival', 'Library', 'Market', 'Remodel', 'Smithy', 'Throne Room', 'Village', 'Woodcutter'] },
+    // Intrigue (2nd edition) rulebook sets. set: 'intrigue' = Intrigue alone, 'both' = Intrigue + base 2nd edition
+    { name: 'Victory Dance', ed: 2, set: 'intrigue', cards: ['Baron', 'Courtier', 'Duke', 'Farm', 'Ironworks', 'Masquerade', 'Mill', 'Nobles', 'Patrol', 'Replace'] },
+    { name: 'The Plot Thickens', ed: 2, set: 'intrigue', cards: ['Conspirator', 'Ironworks', 'Lurker', 'Mining Village', 'Pawn', 'Secret Passage', 'Steward', 'Swindler', 'Torturer', 'Trading Post'] },
+    { name: 'Best Wishes', ed: 2, set: 'intrigue', cards: ['Baron', 'Conspirator', 'Courtyard', 'Diplomat', 'Duke', 'Secret Passage', 'Shanty Town', 'Torturer', 'Upgrade', 'Wishing Well'] },
+    { name: 'Underlings', ed: 2, set: 'both', cards: ['Courtier', 'Diplomat', 'Minion', 'Nobles', 'Pawn', 'Cellar', 'Festival', 'Library', 'Sentry', 'Vassal'] },
+    { name: 'Grand Scheme', ed: 2, set: 'both', cards: ['Bridge', 'Mill', 'Mining Village', 'Patrol', 'Shanty Town', 'Artisan', 'Council Room', 'Market', 'Militia', 'Workshop'] },
+    { name: 'Deconstruction', ed: 2, set: 'both', cards: ['Diplomat', 'Farm', 'Lurker', 'Replace', 'Swindler', 'Bandit', 'Mine', 'Remodel', 'Throne Room', 'Village'] },
   ];
+  // presets that fit a card-set choice (base presets keep their edition filter)
+  function presetsFor(edition, cards) {
+    return PRESETS.filter(pr => {
+      if (pr.set) return cards === 'both' ? true : cards === 'intrigue' ? pr.set === 'intrigue' : false;
+      if (cards === 'intrigue') return false;
+      return edition === 'mix' || pr.ed === Number(edition);
+    });
+  }
 
   const is = (name, type) => CARDS[name].types.indexOf(type) >= 0;
-  return { CARDS, BASICS, ALL_KINGDOM, pool, PRESETS, is };
+  return { CARDS, BASICS, ALL_KINGDOM, INTRIGUE, pool, PRESETS, presetsFor, is };
 });

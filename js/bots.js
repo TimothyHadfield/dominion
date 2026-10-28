@@ -15,12 +15,17 @@
   'use strict';
   const { CARDS, is } = Cards;
 
-  const PLAY_ORDER = ['Throne Room', 'Festival', 'Village', 'Laboratory', 'Market', 'Merchant', 'Poacher', 'Sentry',
-    'Spy', 'Harbinger', 'Cellar', 'Witch', 'Council Room', 'Library', 'Smithy', 'Adventurer', 'Bandit', 'Militia',
-    'Thief', 'Moneylender', 'Mine', 'Artisan', 'Remodel', 'Bureaucrat', 'Feast', 'Workshop', 'Woodcutter',
+  // Intrigue cards slot in by what they do: villages first, then cantrips, then draw/attacks, then money terminals.
+  const PLAY_ORDER = ['Throne Room', 'Festival', 'Village', 'Mining Village', 'Shanty Town', 'Laboratory', 'Market', 'Merchant',
+    'Poacher', 'Sentry', 'Secret Passage', 'Wishing Well', 'Upgrade', 'Mill', 'Lurker', 'Minion', 'Pawn', 'Conspirator!',
+    'Spy', 'Harbinger', 'Cellar', 'Nobles', 'Diplomat', 'Witch', 'Torturer', 'Council Room', 'Library', 'Courtyard', 'Patrol', 'Smithy',
+    'Masquerade', 'Adventurer', 'Bandit', 'Militia', 'Replace', 'Courtier', 'Swindler', 'Thief', 'Moneylender', 'Trading Post', 'Mine',
+    'Artisan', 'Remodel', 'Bureaucrat', 'Feast', 'Ironworks', 'Workshop', 'Baron', 'Bridge', 'Conspirator', 'Steward', 'Woodcutter',
     'Chancellor', 'Vassal', 'Moat', 'Chapel'];
   const NON_TERMINAL = new Set(['Cellar', 'Harbinger', 'Merchant', 'Village', 'Poacher', 'Festival', 'Laboratory',
-    'Market', 'Sentry', 'Spy', 'Throne Room']);
+    'Market', 'Sentry', 'Spy', 'Throne Room',
+    'Lurker', 'Pawn', 'Shanty Town', 'Wishing Well', 'Mill', 'Mining Village', 'Secret Passage', 'Minion', 'Upgrade', 'Farm']);
+  const JUNK = c => c === 'Curse' || c === 'Estate' || (c !== 'Farm' && is(c, 'Victory') && !is(c, 'Action'));
 
   function countOf(p, name) {
     let k = 0;
@@ -38,19 +43,22 @@
     for (const k in m) {
       if (k === '__total') continue;
       if (k === 'Gardens') v += m[k] * Math.floor(m.__total / 10);
+      else if (k === 'Duke') v += m[k] * (m.Duchy || 0);
       else if (CARDS[k].vp) v += CARDS[k].vp * m[k];
     }
     return v;
   }
 
   // total Treasure money in a deck (minMoney rule: don't start greening a thin deck)
-  function money(m) { return (m.Copper || 0) + 2 * (m.Silver || 0) + 3 * (m.Gold || 0); }
-  // ctx: { coins, counts, supply, provScale, g, p, filter }
+  function money(m) { return (m.Copper || 0) + 2 * (m.Silver || 0) + 3 * (m.Gold || 0) + 2 * (m.Farm || 0); }
+  // ctx: { coins, counts, supply, provScale, g, p, filter, off (Bridge discount this turn), exact (gain must cost exactly this) }
   function ruleCard(strat, ctx) {
     const prov = ctx.supply.Province;
+    const off = ctx.off || 0;
     for (const r of strat.buy) {
       const c = CARDS[r.card];
-      if (!c || c.cost > ctx.coins || !(ctx.supply[r.card] > 0)) continue;
+      if (!c || Math.max(0, c.cost - off) > ctx.coins || !(ctx.supply[r.card] > 0)) continue;
+      if (ctx.exact != null && Math.max(0, c.cost - off) !== ctx.exact) continue;
       if (ctx.filter && !is(r.card, ctx.filter)) continue;
       if (r.prov != null && prov > Math.round(r.prov * ctx.provScale)) continue;
       const have = ctx.counts[r.card] || 0;
@@ -75,7 +83,7 @@
     return true;
   }
   function ctxFor(g, p, coins) {
-    return { coins, counts: deckCounts(p), supply: g.supply, provScale: g.startProvinces / 8, g, p };
+    return { coins, counts: deckCounts(p), supply: g.supply, provScale: g.startProvinces / 8, g, p, off: g.costOff || 0 };
   }
   function chooseBuy(strat, g, p) {
     const ctx = ctxFor(g, p, g.coins);
@@ -120,7 +128,7 @@
     const s = Object.create(proto);
     s.ed = g.ed; s.rand = r; s.n = g.n; s.quiet = true; s.maxRounds = g.maxRounds; s.kingdom = g.kingdom;
     s.supply = Object.assign({}, g.supply); s.startProvinces = g.startProvinces; s.trash = []; s.log = []; s.turns = [];
-    s.advisor = null; s.first = g.first; s.over = false; s.result = null; s.pending = null; s.answered = 0;
+    s.advisor = null; s.first = g.first; s.costOff = g.costOff || 0; s.playedN = 0; s.over = false; s.result = null; s.pending = null; s.answered = 0;
     const mine = Object.assign({}, strat, { look: false });
     s.players = g.players.map(o => {
       const q = { i: o.i, name: o.name, bot: o === p ? mine : RIVAL, draw: o.draw.slice(), hand: o.hand.slice(),
@@ -134,12 +142,12 @@
     const me = s.players[p.i];
     // finish this buy phase: the candidate, then the plan for any buys left
     let coins = g.coins, buys = g.buys;
-    if (card) { s.supply[card]--; me.discard.push(card); coins -= CARDS[card].cost; buys--; }
+    if (card) { s.supply[card]--; me.discard.push(card); coins -= g.cost(card); buys--; }
     s.coins = coins;
     while (buys > 0 && card) {
       const c = ruleCard(mine, ctxFor(s, me, coins));
       if (!c) break;
-      s.supply[c]--; me.discard.push(c); coins -= CARDS[c].cost; buys--;
+      s.supply[c]--; me.discard.push(c); coins -= s.cost(c); buys--;
     }
     me.discard.push(...me.hand, ...me.play); me.hand = []; me.play = [];
     s.drawCards(me, 5);
@@ -189,7 +197,7 @@
       g.players.map(o => o.draw.join() + '/' + o.hand.join() + '/' + o.discard.join() + '/' + o.play.join()).join('|'));
     if (memo.has(key)) {
       const m = memo.get(key);
-      if (m === null || (g.supply[m] > 0 && CARDS[m].cost <= g.coins)) return m;
+      if (m === null || (g.supply[m] > 0 && g.cost(m) <= g.coins)) return m;
     }
     const t0 = ROLL.stats ? Date.now() : 0;
     const base = ((g.setup.seed >>> 0) ^ Math.imul(p.turns * 31 + g.buys, 2654435761)) >>> 0;
@@ -239,14 +247,14 @@
     return empty >= (g.n >= 5 ? 4 : 3);
   }
   function affordable(g, coins) {
-    return Object.keys(g.supply).filter(n => g.supply[n] > 0 && CARDS[n].cost <= coins);
+    return Object.keys(g.supply).filter(n => g.supply[n] > 0 && g.cost(n) <= coins);
   }
   function smartBuy(strat, ctx) {
     const { g, p } = ctx;
     // fast path: nothing affordable can end the game (most buys) -> just the plan
     const s = g.supply;
     let empty = 0, one = false;
-    for (const k in s) { if (s[k] === 0) empty++; else if (s[k] === 1 && CARDS[k].cost <= ctx.coins) one = true; }
+    for (const k in s) { if (s[k] === 0) empty++; else if (s[k] === 1 && g.cost(k) <= ctx.coins) one = true; }
     const thr = g.n >= 5 ? 4 : 3;
     if (!(s.Province === 1 && ctx.coins >= 8) && empty < thr && !(one && empty + 1 >= thr)) return ruleCard(strat, ctx);
     const opts = affordable(g, ctx.coins);
@@ -276,7 +284,7 @@
       const c = ruleCard(strat, ctx);
       if (!c) break;
       out.push(c);
-      ctx.coins -= CARDS[c].cost;
+      ctx.coins -= Math.max(0, CARDS[c].cost - (ctx.off || 0));
       ctx.supply[c]--;
       ctx.counts[c] = (ctx.counts[c] || 0) + 1;
       ctx.counts.__total++;
@@ -291,12 +299,16 @@
   // How much a card is worth keeping in hand right now (higher = keep).
   function keepValue(c, g) {
     if (c === 'Curse') return -3;
-    if (is(c, 'Victory') && !is(c, 'Action')) return -2;
     if (c === 'Copper') return 1;
     if (c === 'Silver') return 3;
     if (c === 'Gold') return 6;
+    if (c === 'Farm') return 3;
+    if (is(c, 'Victory') && !is(c, 'Action')) return -2;
     return Math.min(5, CARDS[c].cost) + (NON_TERMINAL.has(c) ? 0.5 : 0);
   }
+  // money in hand right now: Treasures not yet played plus what is already counted this turn
+  function handMoney(g, p) { return g.coins + p.hand.reduce((s, c) => s + (CARDS[c].coin || 0), 0); }
+  const tierOf = x => (x >= 8 ? 4 : x >= 6 ? 3 : x >= 5 ? 2 : x >= 3 ? 1 : 0);
   function lowestIdx(hand, k, g) {
     return hand.map((c, i) => [keepValue(c, g), i]).sort((a, b) => a[0] - b[0]).slice(0, k).map(x => x[1]);
   }
@@ -306,7 +318,10 @@
     const hand = p.hand;
     const acts = hand.filter(c => is(c, 'Action'));
     const terminals = acts.filter(c => !NON_TERMINAL.has(c));
-    for (const name of PLAY_ORDER) {
+    for (const entry of PLAY_ORDER) {
+      // 'Conspirator!' = a Conspirator that would be the 3rd Action played (it then replaces itself)
+      const name = entry === 'Conspirator!' ? 'Conspirator' : entry;
+      if (entry === 'Conspirator!' && (g.playedN || 0) < 2) continue;
       const i = hand.indexOf(name);
       if (i < 0) continue;
       if (name === 'Throne Room' && !acts.some(c => c !== 'Throne Room')) continue;
@@ -315,15 +330,31 @@
       if (name === 'Chapel' && !hand.some(c => c === 'Curse' || c === 'Estate' || c === 'Copper')) continue;
       // Remodel only when there's something worth remodelling
       if (name === 'Remodel' && !hand.some(c => c === 'Curse' || c === 'Estate' || (c === 'Gold' && lateGame(g)))) continue;
+      // Intrigue
+      if (name === 'Trading Post' && hand.filter(c => c === 'Curse' || c === 'Estate' || c === 'Copper').length < 2) continue;
+      if (name === 'Replace' && !hand.some(c => c === 'Curse' || c === 'Estate' || (c === 'Gold' && lateGame(g)) || c === 'Copper')) continue;
+      if (name === 'Upgrade' && hand.length <= 1) continue;
       return i;
     }
     return -1;
   }
 
+  // Swindler: the worst card of that cost for the victim (Curses, then Victory cards early, then the cheapest dud)
+  function worstFor(opts, g) {
+    const bad = n => (n === 'Curse' ? -10 : (is(n, 'Victory') && !is(n, 'Action') && !is(n, 'Treasure')) ? (lateGame(g) ? 5 : -5)
+      : n === 'Copper' ? -4 : is(n, 'Treasure') ? 8 : keepValue(n, g));
+    return opts.slice().sort((a, b) => bad(a) - bad(b))[0] || null;
+  }
+
   function gainChoice(req, g, p) {
+    // Swindler: we pick what the victim gets
+    if (req.to != null && req.to !== p.i) return worstFor(g.gainOptions(req), g);
+    // Lurker: take the strongest Action out of the Supply (the one the others want most)
+    if (req.reason === 'lurker-trash') return g.gainOptions(req).sort((a, b) => CARDS[b].cost - CARDS[a].cost)[0] || null;
     const strat = p.bot || {};
     const ctx = ctxFor(g, p, req.maxCost);
     ctx.filter = req.filter;
+    if (req.exact != null) ctx.exact = req.exact;
     let c = strat.buy ? ruleCard(strat, ctx) : null;
     if (!c) {
       // fallback: the most useful card we're allowed
@@ -336,6 +367,37 @@
       if (c && score(c) < 0 && req.optional) c = null;
     }
     return c;
+  }
+
+  // Intrigue's "pick one / pick two" cards. Returns option indexes.
+  function chooseOpts(req, g, p) {
+    const o = req.options, hand = p.hand;
+    const at = label => o.findIndex(x => x.indexOf(label) === 0);
+    const take = labels => { const out = []; for (const l of labels) { const i = at(l); if (i >= 0 && out.indexOf(i) < 0) out.push(i); } return out.slice(0, req.min); };
+    const moreActs = hand.some(c => is(c, 'Action'));
+    const m = handMoney(g, p);
+    switch (req.reason) {
+      case 'pawn': return take(moreActs && g.actions === 0 ? ['+1 Card', '+1 Action'] : ['+1 Card', '+$1', '+1 Buy']);
+      case 'steward': {
+        const junk = hand.filter(c => c === 'Curse' || (c === 'Estate' && !lateGame(g))).length;
+        if (junk >= 2) return take(['Trash']);
+        return take(tierOf(m + 2) > tierOf(m) ? ['+$2'] : ['+2 Cards']);
+      }
+      case 'nobles': return take(moreActs && g.actions === 0 ? ['+2 Actions'] : ['+3 Cards']);
+      case 'lurker': return take(g.trash.some(c => is(c, 'Action') && CARDS[c].cost >= 4) ? ['Gain'] : ['Trash']);
+      case 'minion': {
+        const dc = deckCounts(p);
+        const avg = money(dc) / Math.max(1, dc.__total);
+        return take(4 * avg > m + 2 + 0.5 || (m < 3 && !moreActs) ? ['Discard'] : ['+$2']);
+      }
+      case 'courtier': {
+        const pref = moreActs && g.actions === 0 ? ['+1 Action'] : [];
+        return take(pref.concat(lateGame(g) ? ['+$3', 'Gain a Gold'] : ['Gain a Gold', '+$3'], ['+1 Buy', '+1 Action']));
+      }
+      case 'torturer': return take(g.supply.Curse > 0 ? ['Discard'] : ['Take a Curse']);
+      case 'passage-where': return [keepValue(req.card, g) < 2 ? o.length - 1 : 0];
+    }
+    return o.slice(0, req.min).map((x, i) => i);
   }
 
   function decide(req, g, p) {
@@ -352,8 +414,20 @@
             return req.target === p.i ? bad : !bad;
           }
           case 'thief-gain': return req.card !== 'Copper';
-          default: return true; // moat, vassal, moneylender, chancellor
+          case 'mining-village': { // trash it only when the $2 reaches a better buy this turn
+            const m = handMoney(g, p);
+            return tierOf(m + 2) > tierOf(m) && tierOf(m + 2) >= 3;
+          }
+          default: return true; // moat, diplomat, vassal, moneylender, chancellor, baron
         }
+      case 'name': { // Wishing Well: the card we most likely flip (we know what's left in the draw pile, not the order)
+        const src = p.draw.length ? p.draw : p.discard;
+        const m = {};
+        let best = Object.keys(g.supply)[0], bv = -1;
+        for (const c of src) { m[c] = (m[c] || 0) + 1; if (m[c] > bv && g.supply[c] != null) { bv = m[c]; best = c; } }
+        return best;
+      }
+      case 'choose': return chooseOpts(req, g, p);
       case 'pickHand': {
         const idx = (pred) => hand.map((c, i) => (pred(c) ? i : -1)).filter(i => i >= 0);
         switch (req.reason) {
@@ -398,7 +472,39 @@
             if (nonVic.length) return [nonVic.sort((a, b) => keepValue(hand[a], g) - keepValue(hand[b], g))[0]];
             return [0];
           }
-          default: return lowestIdx(hand, req.min, g);
+          // ---- Intrigue
+          case 'courtyard': return decide(Object.assign({}, req, { reason: 'artisan-top' }), g, p);
+          case 'masq-trash': {
+            const i = hand.findIndex(c => c === 'Curse' || (c === 'Estate' && !lateGame(g)));
+            return i >= 0 ? [i] : [];
+          }
+          case 'mill': {
+            if (hand.length < 2) return [];
+            const lo = lowestIdx(hand, 2, g);
+            const lost = lo.reduce((s, i) => s + Math.max(0, keepValue(hand[i], g)), 0);
+            return lost < 2 || (lost <= 2 && tierOf(handMoney(g, p) + 2 - lost) > tierOf(handMoney(g, p))) ? lo : [];
+          }
+          case 'passage': return lowestIdx(hand, 1, g);
+          case 'courtier-show': {
+            let best = 0;
+            hand.forEach((c, i) => { if (CARDS[c].types.length > CARDS[hand[best]].types.length) best = i; });
+            return [best];
+          }
+          case 'trading-post': case 'steward-trash': {
+            const junk = idx(c => c === 'Curse').concat(idx(c => c === 'Estate'), idx(c => c === 'Copper'));
+            return junk.concat(lowestIdx(hand, req.min, g).filter(i => junk.indexOf(i) < 0)).slice(0, req.min);
+          }
+          case 'upgrade': {
+            for (const c of ['Curse'].concat(lateGame(g) ? [] : ['Estate'], ['Copper'])) if (hand.indexOf(c) >= 0) return [hand.indexOf(c)];
+            if (hand.indexOf('Gold') >= 0 && lateGame(g) && g.supply.Province > 0 && g.cost('Province') === g.cost('Gold') + 1) return [hand.indexOf('Gold')];
+            return lowestIdx(hand, 1, g);
+          }
+          case 'replace': {
+            if (hand.indexOf('Gold') >= 0 && g.supply.Province > 0 && lateGame(g)) return [hand.indexOf('Gold')];
+            for (const c of ['Curse', 'Estate', 'Copper']) if (hand.indexOf(c) >= 0) return [hand.indexOf(c)];
+            return lowestIdx(hand, 1, g);
+          }
+          default: return lowestIdx(hand, req.min, g); // masquerade, diplomat-discard, torturer-discard, ...
         }
       }
       case 'pickList': {
@@ -425,6 +531,8 @@
             const only = req.only || cards.map((c, i) => i);
             return [only.slice().sort((a, b) => CARDS[cards[b]].cost - CARDS[cards[a]].cost)[0]];
           }
+          case 'lurker-gain': return [cards.map((c, i) => i).sort((a, b) => CARDS[cards[b]].cost - CARDS[cards[a]].cost)[0]];
+          case 'patrol-order': return [cards.map((c, i) => i).sort((a, b) => keepValue(cards[b], g) - keepValue(cards[a], g))[0]];
           default: return cards.slice(0, req.min).map((c, i) => i);
         }
       }

@@ -13,6 +13,8 @@
   const END = [{ card: 'Province' }, { card: 'Duchy', prov: 4 }, { card: 'Estate', prov: 2 }];
   // Hard's tuned endgame: no Province until the deck holds $16 of Treasure (measured +2.7% vs untuned, 4000 games)
   const END_T = [{ card: 'Province', minMoney: 16 }, { card: 'Province', prov: 4 }, { card: 'Duchy', prov: 4 }, { card: 'Estate', prov: 2 }];
+  // Victory cards that do nothing else (Gardens, Duke) can't be 'Big Money + X'; Mill, Nobles, Farm can
+  const pureVictory = x => is(x, 'Victory') && !is(x, 'Action') && !is(x, 'Treasure');
   const plural = x => (/y$/.test(x) ? x.slice(0, -1) + 'ies' : /(ch|sh|s)$/.test(x) ? x + 'es' : x + 's');
   function bigMoney() {
     return { id: 'bm', label: 'Big Money', buy: END.concat([{ card: 'Gold' }, { card: 'Duchy', prov: 6 }, { card: 'Silver' }]) };
@@ -60,11 +62,20 @@
     };
   }
 
+  // Duke (Intrigue): Big Money that greens on Duchies and Dukes a little earlier
+  function dukes() {
+    return {
+      id: 'dukes', label: 'Big Money + Duchies & Dukes', ppr: true,
+      buy: [{ card: 'Province', minMoney: 16 }, { card: 'Province', prov: 4 }, { card: 'Duchy', prov: 6 }, { card: 'Duke', prov: 6 }, { card: 'Estate', prov: 2 },
+        { card: 'Gold' }, { card: 'Duchy', prov: 7 }, { card: 'Duke', prov: 7 }, { card: 'Silver' }],
+    };
+  }
+
   // Hard's candidate plans (all with the tuned endgame).
   function candidates(kingdom, v) {
     const out = [Object.assign(bigMoney(), { id: 'bm+t', ppr: true, buy: END_T.concat([{ card: 'Gold' }, { card: 'Duchy', prov: 6 }, { card: 'Silver' }]) })];
     for (const x of kingdom) {
-      if (is(x, 'Victory')) continue;
+      if (pureVictory(x)) continue;
       if (Bots.NON_TERMINAL.has(x)) out.push(withCard(x, 1, true));
       else {
         out.push(withCard(x, 1, true)); out.push(withCard(x, 2, true));
@@ -74,15 +85,16 @@
     // two different terminals: the three best singles by the measured table, paired
     const tab = Strength && Strength.byCard;
     if (tab) {
-      const top = kingdom.filter(x => !is(x, 'Victory') && !Bots.NON_TERMINAL.has(x) && tab[x]).sort((a, b) => tab[b].win - tab[a].win).slice(0, 3);
+      const top = kingdom.filter(x => !pureVictory(x) && !Bots.NON_TERMINAL.has(x) && tab[x]).sort((a, b) => tab[b].win - tab[a].win).slice(0, 3);
       for (let i = 0; i < top.length; i++) for (let j = i + 1; j < top.length; j++) out.push(twoCards(top[i], top[j]));
     }
     if (kingdom.indexOf('Gardens') >= 0) {
-      for (const g of ['Workshop', 'Woodcutter']) if (kingdom.indexOf(g) >= 0) out.push(gardens(g));
+      for (const g of ['Workshop', 'Woodcutter', 'Ironworks']) if (kingdom.indexOf(g) >= 0) out.push(gardens(g));
     }
-    const villages = kingdom.filter(x => x === 'Village' || x === 'Festival');
-    const draws = kingdom.filter(x => ['Smithy', 'Council Room', 'Library', 'Witch', 'Moat'].indexOf(x) >= 0);
+    const villages = kingdom.filter(x => ['Village', 'Festival', 'Mining Village', 'Shanty Town'].indexOf(x) >= 0);
+    const draws = kingdom.filter(x => ['Smithy', 'Council Room', 'Library', 'Witch', 'Moat', 'Torturer', 'Courtyard', 'Masquerade', 'Diplomat', 'Patrol'].indexOf(x) >= 0);
     for (const v of villages) for (const d of draws) out.push(villageDraw(v, d));
+    if (kingdom.indexOf('Duke') >= 0) out.push(dukes());
     return out;
   }
 
@@ -173,7 +185,7 @@
   function mediumFor(kingdom) {
     let best = null, bw = -1;
     for (const x of kingdom) {
-      if (is(x, 'Victory')) continue;
+      if (pureVictory(x)) continue;
       for (const k of [1]) {
         const s = withCard(x, k);
         const w = Strength && Strength.byId && Strength.byId[s.id] != null ? Strength.byId[s.id] : 0.5;

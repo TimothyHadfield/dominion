@@ -56,7 +56,7 @@ t('rules check: costs, edition lists and recommended sets match the sources', ()
     Artisan: 6, Chancellor: 3, Woodcutter: 3, Feast: 4, Spy: 4, Thief: 4, Adventurer: 6,
   };
   for (const n in cost) assert.strictEqual(C.CARDS[n].cost, cost[n], n);
-  assert.strictEqual(Object.keys(C.CARDS).length, Object.keys(cost).length, 'no extra cards');
+  assert.strictEqual(Object.keys(C.CARDS).filter(n => !C.CARDS[n].set).length, Object.keys(cost).length, 'no extra base cards');
   const added = ['Artisan', 'Bandit', 'Harbinger', 'Merchant', 'Poacher', 'Sentry', 'Vassal'];
   const removed = ['Adventurer', 'Chancellor', 'Feast', 'Spy', 'Thief', 'Woodcutter'];
   for (const x of added) { assert.ok(C.pool(2).includes(x) && !C.pool(1).includes(x), x); }
@@ -74,8 +74,9 @@ t('rules check: costs, edition lists and recommended sets match the sources', ()
     'Size Distortion (1st ed.)': 'Cellar Chapel Feast Gardens Laboratory Thief Village Witch Woodcutter Workshop',
     'Village Square': 'Bureaucrat Cellar Festival Library Market Remodel Smithy Throne_Room Village Woodcutter',
   };
-  assert.strictEqual(C.PRESETS.length, Object.keys(sets).length);
-  for (const pr of C.PRESETS) {
+  const basePresets = C.PRESETS.filter(pr => !pr.set); // Intrigue sets: tests/intrigue.test.js
+  assert.strictEqual(basePresets.length, Object.keys(sets).length);
+  for (const pr of basePresets) {
     assert.deepStrictEqual(pr.cards.slice().sort(), sets[pr.name].split(' ').map(x => x.replace('_', ' ')).sort(), pr.name);
     for (const c of pr.cards) assert.ok(C.pool(pr.ed).includes(c), pr.name + ': ' + c + ' not in its edition');
   }

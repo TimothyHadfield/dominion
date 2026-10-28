@@ -74,6 +74,7 @@
       this.cur = this.first;
       this.round = 1;
       this.actions = 0; this.buys = 0; this.coins = 0; this.merchants = 0; this.silverDone = false;
+      this.costOff = 0; this.playedN = 0;
       this.phase = 'action';
       this.over = false; this.result = null; this.pending = null; this.answered = 0;
       this.gen = this.main();
@@ -138,7 +139,13 @@
           if (req.filter && ans.some(i => !is(p.hand[i], req.filter))) return 'Pick ' + req.filter + ' cards';
           return '';
         }
-        case 'pickList': return intList(req.cards.length);
+        case 'pickList': {
+          const e = intList(req.cards.length); if (e) return e;
+          if (req.only && ans.some(i => req.only.indexOf(i) < 0)) return 'Can\'t pick that';
+          return '';
+        }
+        case 'choose': return intList(req.options.length);
+        case 'name': return typeof ans === 'string' && Object.prototype.hasOwnProperty.call(this.supply, ans) ? '' : 'Name a card in this game';
         case 'gain':
           if (ans === null) return req.optional || !this.gainOptions(req).length ? '' : 'You must gain a card';
           if (this.gainOptions(req).indexOf(ans) < 0) return 'Can\'t gain that';
@@ -146,11 +153,14 @@
       }
       return 'Unknown decision';
     }
+    // what a card costs right now (Bridge makes everything $1 cheaper this turn, never below $0)
+    cost(name) { return Math.max(0, CARDS[name].cost - (this.costOff || 0)); }
     canBuy(name) {
-      return typeof name === 'string' && this.supply[name] > 0 && CARDS[name].cost <= this.coins && this.buys > 0;
+      return typeof name === 'string' && this.supply[name] > 0 && this.cost(name) <= this.coins && this.buys > 0;
     }
     gainOptions(req) {
-      return Object.keys(this.supply).filter(n => this.supply[n] > 0 && CARDS[n].cost <= req.maxCost &&
+      return Object.keys(this.supply).filter(n => this.supply[n] > 0 &&
+        (req.exact != null ? this.cost(n) === req.exact : this.cost(n) <= req.maxCost) &&
         (!req.filter || is(n, req.filter)));
     }
     emptyPiles() { let e = 0; for (const k in this.supply) if (this.supply[k] === 0) e++; return e; }
@@ -181,8 +191,11 @@
     vp(p) {
       const all = this.allCards(p);
       let v = 0;
+      let duchies = 0;
+      for (const c of all) if (c === 'Duchy') duchies++;
       for (const c of all) {
         if (c === 'Gardens') v += Math.floor(all.length / 10);
+        else if (c === 'Duke') v += duchies;
         else if (CARDS[c].vp) v += CARDS[c].vp;
       }
       return v;
@@ -221,6 +234,7 @@
     *turn(p) {
       p.turns++;
       this.actions = 1; this.buys = 1; this.coins = 0; this.merchants = 0; this.silverDone = false;
+      this.costOff = 0; this.playedN = 0;
       this.phase = 'action';
       const rec = { round: this.round, seat: p.i, played: [], coins: 0, bought: [], suggest: [] };
       if (!this.quiet) { rec.handMoney = Odds.money(p.hand); rec.expMoney = p.expNext != null ? p.expNext : 3.5; }
@@ -254,7 +268,7 @@
         const b = yield { kind: 'buy', player: p.i };
         if (b === null || b === undefined) break;
         if (!this.canBuy(b)) continue;
-        this.coins -= CARDS[b].cost;
+        this.coins -= this.cost(b);
         this.buys--;
         this.gain(p, b);
         rec.bought.push(b);
@@ -263,6 +277,7 @@
       this.phase = 'cleanup';
       p.discard.push(...p.hand, ...p.play);
       p.hand = []; p.play = [];
+      this.costOff = 0;
       if (!this.quiet) p.expNext = Odds.mean(Odds.nextHand(counts(p.draw), counts(p.discard), 5).dist);
       this.drawCards(p, 5);
       if (!this.quiet) rec.vpAfter = this.players.map(o => this.vp(o));
@@ -272,6 +287,17 @@
       const out = [];
       for (let k = 1; k < this.n; k++) {
         const v = this.players[(p.i + k) % this.n];
+        // Diplomat (Intrigue): from a hand of 5+, show it to draw 2 then discard 3 (again while still 5+)
+        while (v.hand.indexOf('Diplomat') >= 0 && v.hand.length >= 5) {
+          const yes = yield { kind: 'yesno', player: v.i, reason: 'diplomat', card: 'Diplomat', by: p.i, attack: this.attackCard };
+          if (!yes) break;
+          this.drawCards(v, 2);
+          const k3 = Math.min(3, v.hand.length);
+          const pick = yield { kind: 'pickHand', player: v.i, reason: 'diplomat-discard', min: k3, max: k3 };
+          const out = removeIdx(v.hand, pick);
+          v.discard.push(...out);
+          this.say(v, 'showed Diplomat: drew 2, discarded ' + out.join(', '));
+        }
         if (v.hand.indexOf('Moat') >= 0) {
           const yes = yield { kind: 'yesno', player: v.i, reason: 'moat', card: 'Moat', by: p.i, attack: this.attackCard };
           if (yes) { this.say(v, 'blocked it with Moat'); continue; }
@@ -281,16 +307,31 @@
       return out;
     }
 
-    *gainUpTo(p, maxCost, reason, dest, filter) {
-      const req = { kind: 'gain', player: p.i, reason, maxCost, filter: filter || null, dest: dest || 'discard', optional: false };
+    *gainUpTo(p, maxCost, reason, dest, filter, more) {
+      const req = Object.assign({ kind: 'gain', player: p.i, reason, maxCost, filter: filter || null, dest: dest || 'discard', optional: false }, more || {});
       if (!this.gainOptions(req).length) return null;
       const g = yield req;
-      if (g && this.gain(p, g, req.dest)) { this.say(p, 'gained ' + g); return g; }
+      const to = req.to != null ? this.players[req.to] : p;
+      if (g && this.gain(to, g, req.dest)) { this.say(to, 'gained ' + g); return g; }
       return null;
+    }
+    // a choice between labelled options; answer = list of option indexes (all different)
+    *choose(p, reason, options, k) {
+      const n = Math.min(k || 1, options.length);
+      const ans = yield { kind: 'choose', player: p.i, reason, options, min: n, max: n };
+      return ans.map(i => options[i]);
+    }
+    // exactly k cards from hand (fewer if the hand is smaller), removed and returned
+    *pickN(p, reason, k) {
+      const n = Math.min(k, p.hand.length);
+      if (!n) return [];
+      const pick = yield { kind: 'pickHand', player: p.i, reason, min: n, max: n };
+      return removeIdx(p.hand, pick);
     }
 
     *playAction(p, card, again) {
       const c = CARDS[card];
+      this.playedN++;
       if (c.plus) {
         if (c.plus.cards) this.drawCards(p, c.plus.cards);
         if (c.plus.actions) this.actions += c.plus.actions;
@@ -552,6 +593,245 @@
           p.discard.push(...other);
           break;
         }
+        // ---------------------------------------------------------------- Intrigue
+        case 'Courtyard': {
+          const out = yield* this.pickN(p, 'courtyard', 1);
+          if (out.length) { p.draw.push(out[0]); this.say(p, 'put a card onto their deck'); }
+          break;
+        }
+        case 'Lurker': {
+          const ch = (yield* this.choose(p, 'lurker', ['Trash an Action from the Supply', 'Gain an Action from the trash']))[0];
+          if (ch.indexOf('Trash') === 0) {
+            const req = { kind: 'gain', player: p.i, reason: 'lurker-trash', maxCost: 99, filter: 'Action', dest: 'trash', optional: false };
+            if (!this.gainOptions(req).length) break;
+            const x = yield req;
+            if (x && this.supply[x] > 0) { this.supply[x]--; this.trash.push(x); this.say(p, 'trashed ' + x + ' from the Supply'); }
+          } else {
+            const acts = Array.from(new Set(this.trash.filter(x => is(x, 'Action'))));
+            if (!acts.length) break;
+            let i = 0;
+            if (acts.length > 1) i = (yield { kind: 'pickList', player: p.i, reason: 'lurker-gain', cards: acts, min: 1, max: 1 })[0];
+            this.trash.splice(this.trash.lastIndexOf(acts[i]), 1);
+            p.discard.push(acts[i]);
+            this.say(p, 'gained ' + acts[i] + ' from the trash');
+          }
+          break;
+        }
+        case 'Pawn': {
+          const ch = yield* this.choose(p, 'pawn', ['+1 Card', '+1 Action', '+1 Buy', '+$1'], 2);
+          for (const o of ch) {
+            if (o === '+1 Card') this.drawCards(p, 1);
+            else if (o === '+1 Action') this.actions++;
+            else if (o === '+1 Buy') this.buys++;
+            else this.coins++;
+          }
+          this.say(p, 'chose ' + ch.join(' and '));
+          break;
+        }
+        case 'Masquerade': {
+          // everyone holding cards picks one, then they all move left at once (to the next player who held cards)
+          const ring = [];
+          for (let k = 0; k < this.n; k++) { const q = this.players[(p.i + k) % this.n]; if (q.hand.length) ring.push(q); }
+          const chosen = [];
+          for (const q of ring) {
+            let i = 0;
+            if (new Set(q.hand).size > 1) i = (yield { kind: 'pickHand', player: q.i, reason: 'masquerade', min: 1, max: 1, by: p.i })[0];
+            chosen.push(q.hand.splice(i, 1)[0]);
+          }
+          ring.forEach((q, k) => ring[(k + 1) % ring.length].hand.push(chosen[k]));
+          if (ring.length > 1) this.say(p, 'had everyone pass a card left');
+          if (p.hand.length) {
+            const tr = yield { kind: 'pickHand', player: p.i, reason: 'masq-trash', min: 0, max: 1 };
+            if (tr.length) { const x = p.hand.splice(tr[0], 1)[0]; this.trash.push(x); this.say(p, 'trashed ' + x); }
+          }
+          break;
+        }
+        case 'Shanty Town':
+          this.say(p, 'showed their hand' + (p.hand.length ? ': ' + p.hand.join(', ') : ' (empty)'));
+          if (!p.hand.some(x => is(x, 'Action'))) this.drawCards(p, 2);
+          break;
+        case 'Steward': {
+          const ch = (yield* this.choose(p, 'steward', ['+2 Cards', '+$2', 'Trash 2 cards from your hand']))[0];
+          if (ch === '+2 Cards') this.drawCards(p, 2);
+          else if (ch === '+$2') this.coins += 2;
+          else {
+            const out = yield* this.pickN(p, 'steward-trash', 2);
+            this.trash.push(...out);
+            if (out.length) this.say(p, 'trashed ' + out.join(', '));
+          }
+          break;
+        }
+        case 'Swindler': {
+          this.attackCard = card;
+          const vs = yield* this.victims(p);
+          for (const v of vs) {
+            const x = this.drawOne(v);
+            if (x == null) continue;
+            this.trash.push(x);
+            this.say(v, 'trashed ' + x);
+            yield* this.gainUpTo(p, this.cost(x), 'swindler', 'discard', null, { exact: this.cost(x), to: v.i, card: x });
+          }
+          break;
+        }
+        case 'Wishing Well': {
+          if (!p.draw.length && !p.discard.length) break;
+          const named = yield { kind: 'name', player: p.i, reason: 'wishing-well' };
+          const x = this.drawOne(p);
+          if (x == null) break;
+          if (x === named) { p.hand.push(x); this.say(p, 'named ' + named + ' and found it'); }
+          else { p.draw.push(x); this.say(p, 'named ' + named + ', flipped ' + x); }
+          break;
+        }
+        case 'Baron': {
+          let yes = false;
+          if (p.hand.indexOf('Estate') >= 0) yes = yield { kind: 'yesno', player: p.i, reason: 'baron', card: 'Estate' };
+          if (yes) { p.discard.push(p.hand.splice(p.hand.indexOf('Estate'), 1)[0]); this.coins += 4; this.say(p, 'discarded an Estate for $4'); }
+          else if (this.gain(p, 'Estate')) this.say(p, 'gained an Estate');
+          break;
+        }
+        case 'Bridge': this.costOff++; break;
+        case 'Conspirator':
+          if (this.playedN >= 3) { this.drawCards(p, 1); this.actions++; }
+          break;
+        case 'Diplomat':
+          if (p.hand.length <= 5) this.actions += 2;
+          break;
+        case 'Ironworks': {
+          const x = yield* this.gainUpTo(p, 4, 'ironworks');
+          if (!x) break;
+          if (is(x, 'Action')) this.actions++;
+          if (is(x, 'Treasure')) this.coins++;
+          if (is(x, 'Victory')) this.drawCards(p, 1);
+          break;
+        }
+        case 'Mill': {
+          if (!p.hand.length) break;
+          const pick = yield { kind: 'pickHand', player: p.i, reason: 'mill', min: 0, max: Math.min(2, p.hand.length) };
+          const out = removeIdx(p.hand, pick);
+          p.discard.push(...out);
+          if (out.length === 2) this.coins += 2;
+          if (out.length) this.say(p, 'discarded ' + out.join(', ') + (out.length === 2 ? ' for $2' : ''));
+          break;
+        }
+        case 'Mining Village': {
+          // Throne Room's second play can't trash it again
+          if (again || p.play.lastIndexOf('Mining Village') < 0) break;
+          const yes = yield { kind: 'yesno', player: p.i, reason: 'mining-village', card: 'Mining Village' };
+          if (yes) { p.play.splice(p.play.lastIndexOf('Mining Village'), 1); this.trash.push('Mining Village'); this.coins += 2; this.say(p, 'trashed Mining Village for $2'); }
+          break;
+        }
+        case 'Secret Passage': {
+          const out = yield* this.pickN(p, 'passage', 1);
+          if (!out.length) break;
+          const L = p.draw.length;
+          let pos = 0;
+          if (L) {
+            const ord = n => n + (n === 2 ? 'nd' : n === 3 ? 'rd' : 'th');
+            const opts = [];
+            for (let k = 0; k <= Math.min(L - 1, 9); k++) opts.push(k === 0 ? 'Top' : ord(k + 1) + ' from top');
+            opts.push('Bottom');
+            const i = (yield { kind: 'choose', player: p.i, reason: 'passage-where', options: opts, min: 1, max: 1, card: out[0] })[0];
+            pos = i === opts.length - 1 ? L : i;
+          }
+          p.draw.splice(p.draw.length - pos, 0, out[0]);
+          this.say(p, 'put a card into their deck');
+          break;
+        }
+        case 'Courtier': {
+          if (!p.hand.length) break;
+          const pick = yield { kind: 'pickHand', player: p.i, reason: 'courtier-show', min: 1, max: 1 };
+          const x = p.hand[pick[0]];
+          this.say(p, 'showed ' + x);
+          const ch = yield* this.choose(p, 'courtier', ['+1 Action', '+1 Buy', '+$3', 'Gain a Gold'], CARDS[x].types.length);
+          for (const o of ch) {
+            if (o === '+1 Action') this.actions++;
+            else if (o === '+1 Buy') this.buys++;
+            else if (o === '+$3') this.coins += 3;
+            else if (this.gain(p, 'Gold')) this.say(p, 'gained Gold');
+          }
+          this.say(p, 'chose ' + ch.join(', '));
+          break;
+        }
+        case 'Minion': {
+          this.attackCard = card;
+          const vs = yield* this.victims(p);
+          const ch = (yield* this.choose(p, 'minion', ['+$2', 'Discard your hand, draw 4 (attack)']))[0];
+          if (ch === '+$2') { this.coins += 2; break; }
+          p.discard.push(...p.hand); p.hand = [];
+          this.drawCards(p, 4);
+          this.say(p, 'discarded their hand and drew 4');
+          for (const v of vs) {
+            if (v.hand.length < 5) continue;
+            v.discard.push(...v.hand); v.hand = [];
+            this.drawCards(v, 4);
+            this.say(v, 'discarded their hand and drew 4');
+          }
+          break;
+        }
+        case 'Patrol': {
+          const look = [];
+          for (let i = 0; i < 4; i++) { const x = this.drawOne(p); if (x != null) look.push(x); }
+          if (!look.length) break;
+          this.say(p, 'flipped ' + look.join(', '));
+          const rest = look.filter(x => !(is(x, 'Victory') || x === 'Curse'));
+          p.hand.push(...look.filter(x => is(x, 'Victory') || x === 'Curse'));
+          const order = [];
+          while (rest.length > 1 && new Set(rest).size > 1) {
+            const i = (yield { kind: 'pickList', player: p.i, reason: 'patrol-order', cards: rest.slice(), min: 1, max: 1 })[0];
+            order.push(rest.splice(i, 1)[0]);
+          }
+          order.push(...rest);
+          for (let i = order.length - 1; i >= 0; i--) p.draw.push(order[i]);
+          break;
+        }
+        case 'Replace': {
+          this.attackCard = card;
+          const vs = yield* this.victims(p);
+          const out = yield* this.pickN(p, 'replace', 1);
+          if (!out.length) break;
+          this.trash.push(out[0]);
+          this.say(p, 'trashed ' + out[0]);
+          const x = yield* this.gainUpTo(p, this.cost(out[0]) + 2, 'replace');
+          if (!x) break;
+          if (is(x, 'Action') || is(x, 'Treasure')) { p.discard.splice(p.discard.lastIndexOf(x), 1); p.draw.push(x); this.say(p, 'put ' + x + ' onto their deck'); }
+          if (is(x, 'Victory')) for (const v of vs) if (this.gain(v, 'Curse')) this.say(v, 'gained a Curse');
+          break;
+        }
+        case 'Torturer': {
+          this.attackCard = card;
+          const vs = yield* this.victims(p);
+          for (const v of vs) {
+            const ch = (yield* this.choose(v, 'torturer', ['Discard 2 cards', 'Take a Curse into your hand']))[0];
+            if (ch.indexOf('Discard') === 0) {
+              const out = yield* this.pickN(v, 'torturer-discard', 2);
+              v.discard.push(...out);
+              this.say(v, out.length ? 'discarded ' + out.join(', ') : 'had nothing to discard');
+            } else if (this.gain(v, 'Curse', 'hand')) this.say(v, 'took a Curse into their hand');
+            else this.say(v, 'took a Curse (none left)');
+          }
+          break;
+        }
+        case 'Trading Post': {
+          const out = yield* this.pickN(p, 'trading-post', 2);
+          this.trash.push(...out);
+          if (out.length) this.say(p, 'trashed ' + out.join(', '));
+          if (out.length === 2 && this.gain(p, 'Silver', 'hand')) this.say(p, 'gained a Silver into their hand');
+          break;
+        }
+        case 'Upgrade': {
+          const out = yield* this.pickN(p, 'upgrade', 1);
+          if (!out.length) break;
+          this.trash.push(out[0]);
+          this.say(p, 'trashed ' + out[0]);
+          const c1 = this.cost(out[0]) + 1;
+          yield* this.gainUpTo(p, c1, 'upgrade', 'discard', null, { exact: c1 });
+          break;
+        }
+        case 'Nobles': {
+          const ch = (yield* this.choose(p, 'nobles', ['+3 Cards', '+2 Actions']))[0];
+          if (ch === '+3 Cards') this.drawCards(p, 3); else this.actions += 2;
+          break;
+        }
         default: break; // pure "+" cards
       }
     }
@@ -599,7 +879,7 @@
     const me = g.players[seat];
     return {
       seat, cur: g.cur, round: g.round, phase: g.phase, edition: g.ed,
-      actions: g.actions, buys: g.buys, coins: g.coins,
+      actions: g.actions, buys: g.buys, coins: g.coins, costOff: g.costOff || 0,
       supply: Object.assign({}, g.supply), kingdom: g.kingdom.slice(), trash: counts(g.trash),
       startProvinces: g.startProvinces,
       players: pub,
