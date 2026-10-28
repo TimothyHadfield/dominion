@@ -275,6 +275,11 @@
   @media (min-width: 900px) { .hand .cf .hcount { font-size: 13px; line-height: 19px; border-radius: 10px; padding: 0 6px; } }
   .acts { grid-area: acts; display: flex; gap: 8px; }
   .acts .btn { flex: 1; }
+  /* "pick one / pick two" choices (Pawn, Steward, Courtier...): every option is a button; long ones wrap onto two lines,
+     and a long list (Secret Passage's positions) scrolls sideways */
+  .acts.opts { gap: 5px; overflow-x: auto; scrollbar-width: none; }
+  .acts.opts::-webkit-scrollbar { display: none; }
+  .acts.opts .btn { flex: 1 1 0; min-width: 46px; padding: 2px 3px; font-size: 13px; line-height: 1.1; white-space: normal; }
 
   /* laptop: the whole table, opponents round the far side, a slim side panel for the helpers */
   @media (min-width: 900px) {
@@ -495,6 +500,29 @@
     .ctr .tbl-token { --tok-size: 22px; } .ctr .tbl-coin { --coin-size: 24px; font-size: 11px; }
     .me { --mcw: 34px; } .hand { --hcw: 54px; }
   }
+  /* very short Supply (iPhone SE with a browser bar, 320 x 460): the piles turn into name chips so every name is readable
+     without scrolling; cost coin on the top-left corner, count on the bottom-right, tap to read the full card as before */
+  @container (max-height: 140px) {
+    .sup { gap: 4px; --chip-h: calc((100cqh - 10px) / 3); }
+    .basics, .kingdom { display: grid; width: 100%; gap: 4px 5px; }
+    .basics { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+    .kingdom { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .pile { width: auto; height: var(--chip-h); }
+    .pile > .cf { --cw: 40px; width: 100%; height: 100%; padding: 2px; border-radius: 5px; font-size: 9.5px; }
+    .pile > .cf .art, .pile > .cf .tx, .pile > .cf .ty { display: none; }
+    .pile > .cf .nm, .pile > .cf .nm.l2, .pile > .cf .nm.l3 { flex: 1; height: auto; min-height: 0; font-size: 9.5px; line-height: 1; white-space: normal; padding: 0 1px; letter-spacing: -.02em; border-radius: 4px; }
+    .pile > .cf .cost { left: 1px; top: 1px; bottom: auto; width: 10px; height: 10px; font-size: 7.5px; box-shadow: none; }
+    .kingdom .pile > .cf .nm { padding-left: 9px; }
+    .kingdom .pile > .cf .nm.l2 { font-size: 8.5px; letter-spacing: -.04em; }
+    .kingdom .pile > .cf .nm.l3 { font-size: 8px; line-height: .92; letter-spacing: -.04em; }
+    /* the 7 basics are narrow: name across the top, cost coin under it */
+    .basics .pile > .cf .nm { flex: none; height: 11px; letter-spacing: -.04em; }
+    .basics .pile > .cf .nm.l2 { font-size: 8.5px; }
+    .basics .pile > .cf .cost { top: auto; bottom: 1px; }
+    .pile .cnt { right: -3px; bottom: -4px; min-width: 13px; padding: 0 3px; font-size: 8.5px; line-height: 12px; }
+    .pile.hint::after { top: auto; bottom: -3px; right: auto; left: calc(50% - 4px); width: 8px; height: 8px; }
+    .pile.empty::before { border-radius: 5px; }
+  }
   /* phone on its side: Supply on the left, everything else on the right */
   @media (max-width: 899px) and (orientation: landscape) {
     #table { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); column-gap: 10px; row-gap: 4px; padding: 4px 10px 6px;
@@ -535,22 +563,22 @@
   <section class="view" id="v-settings"></section>
 </div>
 
-<script src="js/cards.js?v=1"></script>
-<script src="js/bots.js?v=3"></script>
+<script src="js/cards.js?v=2"></script>
+<script src="js/bots.js?v=4"></script>
 <script src="js/odds.js?v=1"></script>
-<script src="js/engine.js?v=2"></script>
-<script src="js/strength-data.js?v=1"></script>
-<script src="js/sim.js?v=4"></script>
+<script src="js/engine.js?v=3"></script>
+<script src="js/strength-data.js?v=2"></script>
+<script src="js/sim.js?v=5"></script>
 <script src="js/online-game.js?v=2"></script>
-<script src="js/art.js?v=3"></script>
+<script src="js/art.js?v=4"></script>
 <script src="js/fx.js?v=3"></script>
 <script src="js/table.js?v=1"></script>
 <script src="js/dom-fx.js?v=3"></script>
 <script src="js/profile.js?v=1"></script>
 <script src="js/domprofile.js?v=3"></script>
 <script src="js/coach.js?v=2"></script>
-<script src="js/domcoach.js?v=1"></script>
-<script src="js/pwa.js?v=12" data-version="14"></script>
-<script src="js/app.js?v=13"></script>
+<script src="js/domcoach.js?v=2"></script>
+<script src="js/pwa.js?v=12" data-version="15"></script>
+<script src="js/app.js?v=14"></script>
 </body>
 </html>

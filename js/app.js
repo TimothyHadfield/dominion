@@ -3,7 +3,7 @@
    DomEngine as {setup, actions}; a "table" object is the seat transport (local now, online later). */
 (function () {
   'use strict';
-  const VERSION = '1.0 · 2026-10-19';
+  const VERSION = '1.1 · 2026-10-28';
   const { CARDS, is } = DomCards;
   const KEY = 'dominion:v1';
   let ME = 0; // my seat: 0 on this device, the room's seat online
@@ -16,7 +16,7 @@
 
   // ------------------------------------------------------------------ storage
   function fresh() {
-    return { v: 1, settings: { edition: 2, odds: true, hints: true, opps: 1, level: 'hard' }, kingdom: null, plans: {}, game: null, last: null };
+    return { v: 1, settings: { edition: 2, cards: 'base', odds: true, hints: true, confirmEnd: true, opps: 1, level: 'hard' }, kingdom: null, plans: {}, game: null, last: null };
   }
   const store = (function () {
     try {
@@ -28,7 +28,8 @@
         if (![1, 2, 3].includes(st.opps)) st.opps = def.opps;
         if (!['easy', 'medium', 'hard'].includes(st.level)) st.level = def.level;
         if (![1, 2, 'mix'].includes(st.edition)) st.edition = def.edition;
-        st.odds = st.odds !== false; st.hints = st.hints !== false;
+        if (!['base', 'both', 'intrigue'].includes(st.cards)) st.cards = def.cards;
+        st.odds = st.odds !== false; st.hints = st.hints !== false; st.confirmEnd = st.confirmEnd !== false;
         if (!out.plans || typeof out.plans !== 'object') out.plans = {};
         if (out.kingdom != null && (!Array.isArray(out.kingdom) || out.kingdom.length !== 10 || out.kingdom.some(c => !CARDS[c]))) out.kingdom = null;
         return out;
@@ -49,7 +50,7 @@
   // ------------------------------------------------------------------ kingdom + plans
   const rulesEd = () => (store.settings.edition === 1 ? 1 : 2);
   function randomKingdom() {
-    const pool = DomCards.pool(store.settings.edition).slice();
+    const pool = DomCards.pool(store.settings.edition, store.settings.cards).slice();
     for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
     return pool.slice(0, 10);
   }
@@ -65,7 +66,7 @@
   function getWorker() {
     if (worker !== null) return worker;
     try {
-      worker = new Worker('js/worker.js?v=5');
+      worker = new Worker('js/worker.js?v=6');
       worker.onmessage = e => {
         const w = waiting[e.data.id];
         if (!w) return;
@@ -244,7 +245,7 @@
   function cardText(name) {
     const c = CARDS[name];
     if (c.coin) return '<span class="big coinv">' + c.coin + '</span>';
-    if (c.vp) return '<span class="big">' + c.vp + '</span>';
+    if (c.vp && !is(name, 'Action')) return '<span class="big">' + c.vp + '</span>';
     const t = c.text, i = t.indexOf('. ');
     const first = (i >= 0 ? t.slice(0, i) : t).replace(/\.$/, '');
     if (first[0] !== '+') return '<span>' + esc(t) + '</span>';
@@ -634,9 +635,11 @@
   });
 
   function tileAllowed(name, v, p) {
+    if (p && p.kind === 'name') return v.supply[name] != null; // Wishing Well: any card in the game, even an empty pile
     if (!p || !(v.supply[name] > 0)) return false;
-    if (p.kind === 'buy') return CARDS[name].cost <= v.coins;
-    if (p.kind === 'gain') return CARDS[name].cost <= p.maxCost && (!p.filter || is(name, p.filter));
+    const cost = Math.max(0, CARDS[name].cost - (v.costOff || 0)); // Bridge
+    if (p.kind === 'buy') return cost <= v.coins;
+    if (p.kind === 'gain') return (p.exact != null ? cost === p.exact : cost <= p.maxCost) && (!p.filter || is(name, p.filter));
     return false;
   }
   function handAllowed(i, v, p) {
@@ -676,7 +679,7 @@
       ui.sel = name;
     } else {
       // a second tap on a card you can't buy or gain right now
-      if (ui.sel === name && p && (p.kind === 'buy' || p.kind === 'gain')) fxErr();
+      if (ui.sel === name && p && (p.kind === 'buy' || p.kind === 'gain' || p.kind === 'name')) fxErr();
       ui.sel = ui.sel === name ? null : name;
     }
     ui.selHand = -1;
@@ -689,8 +692,7 @@
       const chosen = p && p.kind === 'pickHand' ? (ui.picks.length ? ui.picks[0] : -1) : ui.selHand;
       if (chosen >= 0 && chosen !== i && v.me.hand[chosen] === v.me.hand[i]) i = chosen;
     }
-    if (p && p.kind === 'pickHand' && handAllowed(i, v, p)) {
-      const at = ui.picks.indexOf(i);
+    if (p && p.kind === 'pickHand' && handAllowed(i, v, p)) {      const at = ui.picks.indexOf(i);
       if (at >= 0) ui.picks.splice(at, 1);
       else if (p.max === 1) ui.picks = [i];
       else if (ui.picks.length < p.max) ui.picks.push(i);
@@ -721,9 +723,26 @@
     switch (b) {
       case 'play': if (ui.selHand >= 0) act(ui.selHand); break;
       case 'tobuy': act(-1); break;
-      case 'buy': case 'gain': if (ui.sel) act(ui.sel); break;
-      case 'end': case 'skip': act(null); break;
+      case 'buy': case 'gain': case 'name': if (ui.sel) act(ui.sel); break;
+      case 'end': {
+        // money left with a buy to spend: ask first (Settings → "Ask before ending a turn")
+        const left = p && p.kind === 'buy' && v.buys > 0 && store.settings.confirmEnd && !table.online ? cheapestUseful(v) : null;
+        if (left) { confirmBox('End your turn with $' + v.coins + ' unspent? You could still buy ' + left + '.', 'End turn', () => act(null)); break; }
+        act(null); break;
+      }
+      case 'skip': act(null); break;
       case 'confirm': act(ui.picks.slice()); break;
+      default:
+        if (/^opt\d+$/.test(b) && p && p.kind === 'choose') {
+          const i = Number(b.slice(3));
+          if (p.max === 1) { act([i]); break; }
+          // pick-two (Pawn, Courtier): tap to mark, tap again to unmark; the last one needed sends the choice
+          const at = ui.picks.indexOf(i);
+          if (at >= 0) ui.picks.splice(at, 1); else ui.picks.push(i);
+          if (ui.picks.length >= p.max) { act(ui.picks.slice(0, p.max)); break; }
+          renderGame();
+        }
+        break;
       case 'yes': act(true); break;
       case 'no': act(false); break;
       case 'deck': sheet('Your deck', deckHTML(v)); break;
@@ -748,9 +767,28 @@
       case 'action': return ['Your turn: play Actions', v.actions + ' action' + (v.actions === 1 ? '' : 's') + ' left. Tap a card twice to play it.'];
       case 'buy': return ['Buy: $' + v.coins + ' · ' + v.buys + ' buy' + (v.buys === 1 ? '' : 's'), 'Tap a card twice to buy it.'];
       case 'gain': {
+        if (p.reason === 'lurker-trash') return ['Lurker: trash an Action from the Supply', 'Tap a lit pile twice.'];
         const where = p.dest === 'hand' ? ' into your hand' : '';
         const what = p.filter ? 'a ' + p.filter : 'a card';
-        return [cap(p.reason) + ': gain ' + what + ' up to $' + p.maxCost + where, 'Tap a lit card twice.'];
+        const forWho = p.to != null && p.to !== ME ? ' for ' + nameOf(v, p.to) : '';
+        const label = p.reason === 'swindler' ? 'Swindler (' + nameOf(v, p.to) + ' lost ' + p.card + ')' : cap(p.reason);
+        const price = p.exact != null ? 'costing exactly $' + p.exact : 'up to $' + p.maxCost;
+        return [label + ': gain ' + what + forWho + ' ' + price + where, 'Tap a lit card twice.'];
+      }
+      case 'name': return ['Wishing Well: name a card', 'Tap any pile, then Name it. If it’s your top card, it goes to your hand.'];
+      case 'choose': {
+        const k = p.max === 1 ? 'one' : p.max === 2 ? 'two' : p.max === 3 ? 'three' : p.max;
+        const T = {
+          lurker: ['Lurker: pick one', 'Trash an Action from the Supply, or gain an Action from the trash.'],
+          pawn: ['Pawn: pick two', 'Each one once.'],
+          steward: ['Steward: pick one', '+2 Cards, +$2, or trash 2 cards from your hand.'],
+          courtier: ['Courtier: pick ' + k, 'One for each type the shown card has.'],
+          minion: ['Minion: pick one', '+$2, or discard your hand and draw 4; everyone else with 5+ cards does the same.'],
+          torturer: [attacker + 'Torturer: pick one', 'Discard 2 cards, or take a Curse into your hand.'],
+          nobles: ['Nobles: pick one', ''],
+          'passage-where': ['Secret Passage: where does ' + (p.card || 'the card') + ' go?', 'Top means you draw it next.'],
+        };
+        return T[p.reason] || ['Pick ' + k, ''];
       }
       case 'yesno': {
         switch (p.reason) {
@@ -761,6 +799,9 @@
           case 'chancellor': return ['Chancellor: move your deck into your discard pile?', 'Good when your deck has bad cards left.'];
           case 'spy': return ['Spy: ' + (p.target === ME ? 'your' : nameOf(v, p.target) + '’s') + ' top card is ' + p.card + '. Discard it?', ''];
           case 'thief-gain': return ['Thief: take the ' + p.card + ' for yourself?', 'Otherwise it stays in the trash.'];
+          case 'diplomat': return [attacker + (p.attack || 'attack') + ': show your Diplomat?', 'You draw 2, then discard 3.'];
+          case 'baron': return ['Baron: discard an Estate for +$4?', 'If not, you gain an Estate.'];
+          case 'mining-village': return ['Mining Village: trash it for +$2?', 'It leaves the game.'];
         }
         return ['Yes or no?', ''];
       }
@@ -776,6 +817,18 @@
           mine: ['Mine: pick a Treasure to upgrade', 'You gain a Treasure costing up to $3 more, into your hand.'],
           remodel: ['Remodel: pick a card to trash', 'Then gain a card costing up to $2 more.'],
           'artisan-top': ['Artisan: put a card from your hand onto your deck', 'You’ll draw it next turn.'],
+          'diplomat-discard': ['Diplomat: discard 3', ''],
+          courtyard: ['Courtyard: put a card from your hand onto your deck', 'You’ll draw it next turn.'],
+          masquerade: [(p.by == null || p.by === ME ? '' : nameOf(v, p.by) + '’s ') + 'Masquerade: pass a card to the left', 'Everyone passes one at once.'],
+          'masq-trash': ['Masquerade: trash a card?', 'Pick one, or confirm with none.'],
+          'steward-trash': ['Steward: trash 2 cards', ''],
+          mill: ['Mill: discard 2 for +$2?', 'Pick 2, or confirm with none.'],
+          passage: ['Secret Passage: pick a card to put into your deck', ''],
+          'courtier-show': ['Courtier: show a card', 'You pick one choice per type it has.'],
+          replace: ['Replace: pick a card to trash', 'Gain one costing up to $2 more. Action or Treasure goes on your deck; Victory gives Curses.'],
+          'torturer-discard': [attacker + 'Torturer: discard 2', ''],
+          'trading-post': ['Trading Post: trash 2 cards', 'Trash 2 to gain a Silver into your hand.'],
+          upgrade: ['Upgrade: pick a card to trash', 'Gain one costing exactly $1 more.'],
         };
         const tt = T[p.reason] || ['Pick ' + n + ' card' + (p.max === 1 ? '' : 's'), ''];
         return [tt[0], tt[1] || ('Pick ' + n + '.')];
@@ -788,6 +841,8 @@
           'sentry-top': ['Sentry: which card goes on top?', 'You draw the top card first.'],
           bandit: [attacker + 'Bandit: which Treasure do you lose?', ''],
           thief: ['Thief: pick the Treasure to trash', ''],
+          'lurker-gain': ['Lurker: which Action do you take from the trash?', ''],
+          'patrol-order': ['Patrol: which card goes on top?', 'You draw the top card first.'],
         };
         return T[p.reason] || ['Pick', ''];
       }
@@ -795,6 +850,17 @@
     return ['', ''];
   }
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+  // the cheapest pile worth buying with the money left, or null: never Copper or Curse, and Estate only near the end
+  // (3 or fewer Provinces left), so a plain $2 hand early on doesn't ask every turn
+  function cheapestUseful(v) {
+    let best = null, bc = 99;
+    for (const n in v.supply) {
+      if (!(v.supply[n] > 0) || n === 'Copper' || n === 'Curse' || (n === 'Estate' && v.supply.Province > 3)) continue;
+      const c = Math.max(0, CARDS[n].cost - (v.costOff || 0));
+      if (c <= v.coins && c < bc) { best = n; bc = c; }
+    }
+    return best;
+  }
 
   function oppSummary(v) {
     // the other players' turns since my previous turn
@@ -1042,7 +1108,8 @@
     const shown = ui.look && CARDS[ui.look] ? ui.look : ui.sel;
     if (shown && CARDS[shown]) {
       const c = CARDS[shown];
-      p2 = '<b>' + esc(shown) + '</b> · $' + c.cost + ' · ' + esc(c.text) + (v.supply[shown] != null ? ' <span>(' + v.supply[shown] + ' left)</span>' : '');
+      const now = v.costOff && v.supply[shown] != null ? Math.max(0, c.cost - v.costOff) : c.cost;
+      p2 = '<b>' + esc(shown) + '</b> · $' + now + (now !== c.cost ? ' <span>(was $' + c.cost + ')</span>' : '') + ' · ' + esc(c.text) + (v.supply[shown] != null ? ' <span>(' + v.supply[shown] + ' left)</span>' : '');
     }
     // nothing picked: the laptop card box shows the simulator's buy (hints on), else the last card anyone bought
     let rest = null;
@@ -1121,7 +1188,20 @@
         }
         case 'gain': {
           const ok = ui.sel && tileAllowed(ui.sel, v, p);
-          acts = B('gain', ok ? 'Gain ' + esc(ui.sel) : 'Pick a card', 'warm', !ok) + (p.optional ? B('skip', 'Skip') : '');
+          const verb = p.reason === 'lurker-trash' ? 'Trash ' : 'Gain ';
+          acts = B('gain', ok ? verb + esc(ui.sel) : 'Pick a card', 'warm', !ok) + (p.optional ? B('skip', 'Skip') : '');
+          break;
+        }
+        case 'name': {
+          const ok = ui.sel && tileAllowed(ui.sel, v, p);
+          acts = B('name', ok ? 'Name ' + esc(ui.sel) : 'Pick a card', 'warm', !ok);
+          break;
+        }
+        case 'choose': {
+          // long choices get a short button label (the prompt above spells them out)
+          const SHORT = { 'Trash 2 cards from your hand': 'Trash 2 cards', 'Trash an Action from the Supply': 'Trash from Supply', 'Gain an Action from the trash': 'Gain from trash',
+            'Discard your hand, draw 4 (attack)': 'Attack: new hand', 'Take a Curse into your hand': 'Take a Curse' };
+          acts = p.options.map((o, i) => B('opt' + i, esc(SHORT[o] || (p.reason === 'passage-where' ? o.replace(' from top', '') : o)), p.max > 1 && ui.picks.indexOf(i) >= 0 ? 'primary' : '')).join('');
           break;
         }
         case 'pickHand': case 'pickList': {
@@ -1131,7 +1211,7 @@
           break;
         }
         case 'yesno': {
-          const L = { moat: ['Show Moat', 'Don’t'], vassal: ['Play it', 'No'], moneylender: ['Trash Copper', 'No'], library: ['Set aside', 'Keep it'], chancellor: ['Yes', 'No'], spy: ['Discard', 'Leave it'], 'thief-gain': ['Take it', 'Trash it'] }[p.reason] || ['Yes', 'No'];
+          const L = { diplomat: ['Show Diplomat', 'Don’t'], baron: ['Discard Estate', 'Gain Estate'], 'mining-village': ['Trash it', 'Keep it'], moat: ['Show Moat', 'Don’t'], vassal: ['Play it', 'No'], moneylender: ['Trash Copper', 'No'], library: ['Set aside', 'Keep it'], chancellor: ['Yes', 'No'], spy: ['Discard', 'Leave it'], 'thief-gain': ['Take it', 'Trash it'] }[p.reason] || ['Yes', 'No'];
           acts = B('yes', L[0], 'primary') + B('no', L[1]);
           break;
         }
@@ -1146,7 +1226,7 @@
     dropFans();
     ui.hoverName = null;
     vPlay.innerHTML = '<div id="game"><div id="table" class="tbl-surface tbl-wood-dark' + (v.over ? ' over' : '') + '">' + opps + supply + info + playRow + meRow +
-      '<div class="bottom">' + odds + '<div class="acts">' + acts + '</div></div></div>' + side + '</div>';
+      '<div class="bottom">' + odds + '<div class="acts' + (p && p.kind === 'choose' && !v.over ? ' opts' : '') + '">' + acts + '</div></div></div>' + side + '</div>';
 
     // decks, hands of card backs and my hand fan (js/table.js)
     vPlay.querySelectorAll('.sdeck').forEach(el => TABLE.deck(el, Number(el.dataset.n), { cls: 'dom-back', perCard: 0.2, max: 5 }));
@@ -1197,7 +1277,7 @@
   function renderKingdom() {
     const k = store.kingdom.slice().sort(byCost);
     const ed = store.settings.edition;
-    const presets = DomCards.PRESETS.filter(pr => ed === 'mix' || pr.ed === Number(ed));
+    const presets = DomCards.presetsFor(ed, store.settings.cards);
     const rows = k.map(n => {
       const st = strengthOf(n);
       const w = st ? st.win : null;
@@ -1225,7 +1305,7 @@
         .then(() => { if (ui.tab === 'kingdom') renderKingdom(); }).catch(() => {});
     }
     vK.innerHTML = '<div class="kwrap">' +
-      '<div class="khead row"><span class="label grow">Kingdom · ' + (ed === 'mix' ? 'both editions' : ed === 1 ? '1st edition' : '2nd edition') + '</span>' +
+      '<div class="khead row"><span class="label grow">Kingdom · ' + (store.settings.cards === 'intrigue' ? 'Intrigue' : (ed === 'mix' ? 'both editions' : ed === 1 ? '1st edition' : '2nd edition') + (store.settings.cards === 'both' ? ' + Intrigue' : '')) + '</span>' +
       '<select data-preset aria-label="Suggested sets"><option value="">Suggested sets</option>' + presets.map(pr => '<option>' + esc(pr.name) + '</option>').join('') + '</select>' +
       '<button class="btn small primary" data-random>Random</button></div>' +
       '<div class="klist scroll">' + rows + '</div>' +
@@ -1239,7 +1319,7 @@
     if (t.closest('[data-random]')) { store.kingdom = randomKingdom(); ui.planProgress = 0; save(); renderKingdom(); return; }
     const sw = t.closest('[data-swap]');
     if (sw) {
-      const pool = DomCards.pool(store.settings.edition).filter(c => store.kingdom.indexOf(c) < 0);
+      const pool = DomCards.pool(store.settings.edition, store.settings.cards).filter(c => store.kingdom.indexOf(c) < 0);
       if (!pool.length) return;
       const i = store.kingdom.indexOf(sw.dataset.swap);
       store.kingdom[i] = pool[Math.floor(Math.random() * pool.length)];
@@ -1312,8 +1392,11 @@
     vSet.innerHTML = '<div class="set scroll">' +
       '<div class="panel"><div class="row"><span class="label grow">Card set</span>' + qBtn('2nd edition (2016) swapped six cards for seven new ones and made Moneylender, Mine and Throne Room optional ("you may"). 1st edition plays those three as must-do. Both = any of the 32 cards, with 2nd-edition rules.') + '</div>' +
       '<div class="seg" data-ed style="margin-top:8px"><button aria-pressed="' + (s.edition === 2) + '" data-v="2">2nd edition</button><button aria-pressed="' + (s.edition === 1) + '" data-v="1">1st edition</button><button aria-pressed="' + (s.edition === 'mix') + '" data-v="mix">Both</button></div>' +
+      '<div class="row" style="margin-top:12px"><span class="label grow">Kingdom cards</span>' + qBtn('Intrigue (2nd edition) adds 26 more kingdom cards: choices, Victory cards that do things, and new attacks. Off by default. Random kingdoms and suggested sets follow this choice.') + '</div>' +
+      '<div class="seg" data-cards style="margin-top:8px"><button aria-pressed="' + (s.cards === 'base') + '" data-v="base">Base only</button><button aria-pressed="' + (s.cards === 'both') + '" data-v="both">Base + Intrigue</button><button aria-pressed="' + (s.cards === 'intrigue') + '" data-v="intrigue">Intrigue only</button></div>' +
       (table ? '<p class="muted" style="font-size:12.5px;margin:8px 0 0">Applies to your next game.</p>' : '') + '</div>' +
-      '<div class="panel">' + sw('odds', 'Show odds', 'Chance of $5 / $6 / $8 next hand') + sw('hints', 'Buy hints', 'Light up what the simulator would buy') + '</div>' +
+      '<div class="panel">' + sw('odds', 'Show odds', 'Chance of $5 / $6 / $8 next hand') + sw('hints', 'Buy hints', 'Light up what the simulator would buy') +
+      sw('confirmEnd', 'Ask before ending a turn', 'When you still have money and a buy left') + '</div>' +
       (DC || DP ? '<div class="panel">' +
         (DC ? '<div class="setrow"><div class="grow"><b>Rules</b><span>How to play, in short sections.</span></div><button class="btn small" data-rules>Open</button></div>' +
           '<div class="setrow"><div class="grow"><b>Guided game</b><span>One game against Easy with tips on screen.</span></div><button class="btn small" data-tutorial>Start</button></div>' : '') +
@@ -1330,8 +1413,16 @@
     const b = e.target.closest('[data-ed] button');
     if (b) {
       store.settings.edition = b.dataset.v === 'mix' ? 'mix' : Number(b.dataset.v);
-      const pool = DomCards.pool(store.settings.edition);
+      const pool = DomCards.pool(store.settings.edition, store.settings.cards);
       if (store.kingdom.some(c => pool.indexOf(c) < 0)) store.kingdom = randomKingdom();
+      save(); renderSettings(); return;
+    }
+    const bc = e.target.closest('[data-cards] button');
+    if (bc) {
+      store.settings.cards = bc.dataset.v;
+      const pool = DomCards.pool(store.settings.edition, store.settings.cards);
+      // a kingdom that no longer fits the choice (or has no Intrigue card when Intrigue was just asked for) is re-dealt
+      if (store.kingdom.some(c => pool.indexOf(c) < 0) || (bc.dataset.v === 'both' && !store.kingdom.some(c => DomCards.INTRIGUE.indexOf(c) >= 0))) store.kingdom = randomKingdom();
       save(); renderSettings(); return;
     }
     if (e.target.closest('[data-rules]')) { openRules(); return; }

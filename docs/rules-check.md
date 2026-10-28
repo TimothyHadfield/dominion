@@ -86,6 +86,23 @@ No rule changed. These were checked against the rulebook and pinned with tests:
 - Witch with no Curses left, Mine with no Gold left (must gain a cheaper Treasure), Workshop with nothing gainable, Poacher with more empty piles than cards, Militia vs 3 cards, Bandit/Spy/Vassal vs empty decks, Throne Room on Throne Room, Merchant + a Silver gained into hand by Mine: all match the card text.
 - Not a rule: the site stops a game after round 80 (safety limit so two computers can't loop forever). The end screen and log now say so instead of naming a winner silently.
 
+## Intrigue, 2nd edition (added 2026-10-28, tests/intrigue.test.js)
+Source: Dominion Strategy wiki, [Intrigue](https://wiki.dominionstrategy.com/index.php/Intrigue) and each card's own page
+(costs, types, card text, rulings, the recommended sets). Our card text is our own wording.
+- Optional (Settings → Kingdom cards: Base only, the default / Base + Intrigue / Intrigue only). Base games are unchanged:
+  the same seeds play the same games as before (old vs new code compared on 6 kingdoms).
+- 26 kingdom cards: the 2016 second edition (Coppersmith, Great Hall, Saboteur, Scout, Secret Chamber, Tribute out;
+  Courtier, Diplomat, Lurker, Mill, Patrol, Replace, Secret Passage in). Harem is shown under its 2024 name **Farm**.
+- Victory kingdom piles (Nobles, Duke, Mill, Farm): 8 with 2 players, 12 with 3–4 (test "victory kingdom piles").
+- Duke: 1 VP per Duchy. Farm: $2 Treasure + 2 VP. Nobles 2 VP, Mill 1 VP.
+- Bridge: costs drop by $1 per Bridge played this turn (never below 0), for buying and for gaining (Swindler, Upgrade,
+  Ironworks, Replace). Upgrade gains exactly $1 more; Swindler's victim gets a card of exactly the same cost, picked by the attacker.
+- Diplomat reacts only with 5 or more cards in hand (draw 2, then discard 3); it can be shown before Moat.
+- Masquerade passes to the next player who holds cards; everyone picks first, then all pass at once.
+- Mining Village can only trash itself once (not on Throne Room's second play).
+- Minion's attack hits players with 5 or more cards; Replace curses only when the gained card is a Victory card.
+- Secret Passage on this site offers Top, 2nd…10th from top, or Bottom (a deep deck's exact middle positions are trimmed).
+
 ## Not covered (on purpose)
 - 5–6 players (needs the separate Base Cards box).
 - Choosing not to play a Treasure (no effect with base-set cards).
