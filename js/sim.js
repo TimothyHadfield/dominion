@@ -186,7 +186,9 @@
 
   // The Hard computer: its plan for this kingdom, plus endgame sense (never ends the game on a losing buy,
   // takes a winning game-ending buy). Old saved games keep their plain plan, so they replay the same.
-  const HARD = { smart: true };
+  // look: the endgame look-ahead (bots.js rollBuy), added 2026-10-27. A separate flag so games saved before it
+  // (smart only) replay exactly as they were played.
+  const HARD = { smart: true, look: 1 };
   // Version of Hard's plan search; the app keys its plan cache on it so old cached plans are searched again.
   const PLAN_V = 2;
   function hardFor(plan) { return Object.assign({}, plan, HARD); }

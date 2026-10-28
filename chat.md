@@ -50,3 +50,9 @@
 - **Verified:** ladder 100×60: Hard vs Easy 80.3 → 82.3%, vs Medium 55.3 → 59.9%, Medium vs Easy 76.8%. New tests seen failing on the old code first (smart 4 fails, fx 2, Moat-undo 257/257 leaks). flows.mjs 19/19 in WebKit (tutorial, Undo, Daily, quit = loss, Rules/stats + Back); pwa-check 18/18; sizes 320x460 → 1440x900 in WebKit + Chrome: no overflow, no page errors, Deal/Daily/Undo visible. One reviewer: 2 bugs (Moat undo leak, Daily race) fixed.
 - **Open:** 65% target missed (60%); sounds and Daily streak over real days not checked; real iPhone.
 
+## 2026-10-27 — Hard, second pass (manager brief)
+- **Asked:** make Hard clearly stronger (≥65% vs Medium), genuinely different methods, ≤300 ms a decision, Easy/Medium unchanged, not learnable.
+- **Built:** bots.js endgame look-ahead (`rollBuy`: rollouts from the real position, hidden cards reshuffled, successive halving, pruned candidates, turn budget, memo saved with the game); faster `smartBuy`; `look` flag in sim.js HARD; app.js saves/loads the memo; ratings Hard 1500; versions bumped (build 13).
+- **Verified:** ladder 100×60: Hard vs Medium 59.9 → 63.1%, vs Easy 82.3 → 84.5%, Medium vs Easy 76.8% (same). Decision time avg 45 ms, max 115 ms (2p) / 165 ms (4p). smart tests 12 (look-ahead test failed on the old code: took the Province that hands the rival the win). All suites green. WebKit smoke: 4p vs 3 Hard to 2 Provinces left, reload resumes, replay 9 ms, no console errors.
+- **Open:** 65% still not reached; plan choice measured saturated (oracle 59.4%).
+
