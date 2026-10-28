@@ -79,7 +79,137 @@
   }
   function chooseBuy(strat, g, p) {
     const ctx = ctxFor(g, p, g.coins);
+    if (strat.look && ROLL.on && g.setup && rollTime(g)) {
+      const r = rollBuy(strat, g, p);
+      if (r !== undefined) return r;
+    }
     return strat.smart ? smartBuy(strat, ctx) : ruleCard(strat, ctx);
+  }
+
+  // ---- Hard's endgame look-ahead (rollouts) ----
+  // Near the end, each sensible buy is tried by playing the rest of the game out many times from here
+  // (own draw order and the rivals' hands are reshuffled: Hard never looks at hidden cards), with Hard's
+  // own plan for itself and a money plan for everyone else. The buy that wins most often is taken.
+  // Seeds come from the game's own seed and the turn, so a replay makes the same choice.
+  const ROLL = { on: true, prov: 3, n: 24, n2: 96, margin: 0, prune: 1, budget: 6000, stats: null };
+  const RIVAL = { id: 'roll-bm', smart: true, buy: [{ card: 'Province' }, { card: 'Duchy', prov: 4 }, { card: 'Estate', prov: 2 },
+    { card: 'Gold' }, { card: 'Duchy', prov: 6 }, { card: 'Silver' }] };
+  function rollTime(g) {
+    if (g.supply.Province <= Math.round(ROLL.prov * g.startProvinces / 8)) return true;
+    let low = 0;
+    for (const k in g.supply) if (g.supply[k] <= 2) low++;
+    return low >= 2;
+  }
+  function rng32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function shuf(a, r) {
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; }
+    return a;
+  }
+  // One played-out future after `p` gains `card` (null = nothing) with the coins left. Returns p's share of the win.
+  function rollout(g, p, strat, card, seed) {
+    const r = rng32(seed);
+    const proto = Object.getPrototypeOf(g);
+    const s = Object.create(proto);
+    s.ed = g.ed; s.rand = r; s.n = g.n; s.quiet = true; s.maxRounds = g.maxRounds; s.kingdom = g.kingdom;
+    s.supply = Object.assign({}, g.supply); s.startProvinces = g.startProvinces; s.trash = []; s.log = []; s.turns = [];
+    s.advisor = null; s.first = g.first; s.over = false; s.result = null; s.pending = null; s.answered = 0;
+    const mine = Object.assign({}, strat, { look: false });
+    s.players = g.players.map(o => {
+      const q = { i: o.i, name: o.name, bot: o === p ? mine : RIVAL, draw: o.draw.slice(), hand: o.hand.slice(),
+        discard: o.discard.slice(), play: o.play.slice(), turns: o.turns };
+      if (o !== p) { // hidden: their hand and draw order
+        const pool = shuf(q.hand.concat(q.draw), r);
+        q.hand = pool.splice(0, q.hand.length); q.draw = pool;
+      } else shuf(q.draw, r);
+      return q;
+    });
+    const me = s.players[p.i];
+    // finish this buy phase: the candidate, then the plan for any buys left
+    let coins = g.coins, buys = g.buys;
+    if (card) { s.supply[card]--; me.discard.push(card); coins -= CARDS[card].cost; buys--; }
+    s.coins = coins;
+    while (buys > 0 && card) {
+      const c = ruleCard(mine, ctxFor(s, me, coins));
+      if (!c) break;
+      s.supply[c]--; me.discard.push(c); coins -= CARDS[c].cost; buys--;
+    }
+    me.discard.push(...me.hand, ...me.play); me.hand = []; me.play = [];
+    s.drawCards(me, 5);
+    if (s.endReached()) { s.finish(); }
+    else {
+      s.cur = (g.cur + 1) % g.n; s.round = g.round + (s.cur === g.first ? 1 : 0);
+      s.actions = 0; s.buys = 0; s.coins = 0; s.merchants = 0; s.silverDone = false; s.phase = 'action';
+      if (s.round > s.maxRounds) s.finish();
+      else { s.gen = s.main(); s.advance(undefined); }
+    }
+    rollTurns += s.turns.length;
+    const w = s.result.winners;
+    return w.indexOf(p.i) >= 0 ? 1 / w.length : 0;
+  }
+  let rollTurns = 0;
+  // Choices already worked out (by game seed + position), so a replay (Undo, reopening the app) is instant.
+  // The app saves one game's list with the game: lookSave(seed) -> {key: card}, lookLoad(list).
+  const memo = new Map();
+  function hash2(str) {
+    let a = 2166136261, b = 5381;
+    for (let i = 0; i < str.length; i++) { const c = str.charCodeAt(i); a = Math.imul(a ^ c, 16777619); b = (Math.imul(b, 33) + c) | 0; }
+    return (a >>> 0).toString(36) + '.' + (b >>> 0).toString(36);
+  }
+  function lookSave(seed) {
+    const pre = (seed >>> 0) + ':', out = {};
+    for (const [k, v] of memo) if (k.indexOf(pre) === 0) out[k.slice(pre.length)] = v;
+    return out;
+  }
+  function lookLoad(seed, list) {
+    if (!list || typeof list !== 'object') return;
+    const pre = (seed >>> 0) + ':';
+    for (const k in list) if (list[k] === null || CARDS[list[k]]) memo.set(pre + k, list[k]);
+  }
+  function rollBuy(strat, g, p) {
+    const plan = smartBuy(strat, ctxFor(g, p, g.coins));
+    const opts = affordable(g, g.coins);
+    const set = [plan || null];
+    const sp = g.supply, near = sp.Province <= 2 || Object.keys(sp).some(k => sp[k] <= 2);
+    for (const c of ['Province', 'Duchy', 'Estate', 'Gold', 'Silver']) {
+      if (opts.indexOf(c) < 0 || set.indexOf(c) >= 0) continue;
+      if (ROLL.prune && ((c === 'Silver' && g.coins >= 6) || (c === 'Estate' && sp.Province > 3 && !near))) continue;
+      set.push(c);
+    }
+    if (set.indexOf(null) < 0 && (!ROLL.prune || near)) set.push(null);
+    if (set.length < 2) return plan;
+    const key = (g.setup.seed >>> 0) + ':' + hash2(g.cur + '|' + p.turns + '|' + g.buys + '|' + g.coins + '|' + JSON.stringify(g.supply) + '|' +
+      g.players.map(o => o.draw.join() + '/' + o.hand.join() + '/' + o.discard.join() + '/' + o.play.join()).join('|'));
+    if (memo.has(key)) {
+      const m = memo.get(key);
+      if (m === null || (g.supply[m] > 0 && CARDS[m].cost <= g.coins)) return m;
+    }
+    const t0 = ROLL.stats ? Date.now() : 0;
+    const base = ((g.setup.seed >>> 0) ^ Math.imul(p.turns * 31 + g.buys, 2654435761)) >>> 0;
+    // successive halving: every candidate gets n rollouts, the best two get n2 more each (same seeds for all)
+    const sc = set.map(c => ({ c, w: 0, k: 0 }));
+    // a fixed budget of simulated turns (not the clock, so a replay decides the same) keeps long endings fast
+    rollTurns = 0;
+    const run = (e, from, to) => { for (let j = from; j < to; j++) { e.w += rollout(g, p, strat, e.c, (base + j * 7919) >>> 0); e.k = j + 1; } };
+    for (const e of sc) run(e, 0, ROLL.n);
+    sc.sort((a, b) => b.w / b.k - a.w / a.k || (a.c === plan ? -1 : b.c === plan ? 1 : 0));
+    if (ROLL.n2) for (let j = ROLL.n; j < ROLL.n + ROLL.n2 && rollTurns <= ROLL.budget; j += 8) for (const e of sc.slice(0, 2)) run(e, j, j + 8);
+    const top = sc.slice(0, 2).sort((a, b) => b.w / b.k - a.w / a.k || (a.c === plan ? -1 : b.c === plan ? 1 : 0));
+    let best = top[0].c;
+    const bv = top[0].w / top[0].k;
+    const pe = sc.find(e => e.c === plan), pv = pe.w / pe.k;
+    if (best !== plan && bv - pv <= ROLL.margin) best = plan;
+    if (memo.size > 2000) memo.clear();
+    memo.set(key, best);
+    if (ROLL.stats) ROLL.stats(Date.now() - t0, rollTurns, best !== plan);
+    return best;
   }
 
   // ---- Hard's endgame sense (strategies with smart: true) ----
@@ -113,6 +243,12 @@
   }
   function smartBuy(strat, ctx) {
     const { g, p } = ctx;
+    // fast path: nothing affordable can end the game (most buys) -> just the plan
+    const s = g.supply;
+    let empty = 0, one = false;
+    for (const k in s) { if (s[k] === 0) empty++; else if (s[k] === 1 && CARDS[k].cost <= ctx.coins) one = true; }
+    const thr = g.n >= 5 ? 4 : 3;
+    if (!(s.Province === 1 && ctx.coins >= 8) && empty < thr && !(one && empty + 1 >= thr)) return ruleCard(strat, ctx);
     const opts = affordable(g, ctx.coins);
     // 1. Take a game-ending gain that wins (most points first).
     let best = null, bv = -1;
@@ -296,5 +432,5 @@
     return null;
   }
 
-  return { decide, planBuys, chooseBuy, ruleCard, smartBuy, endOutcome, endsGame, keepValue, PLAY_ORDER, NON_TERMINAL, deckCounts };
+  return { ROLL, lookSave, lookLoad, decide, planBuys, chooseBuy, ruleCard, smartBuy, endOutcome, endsGame, keepValue, PLAY_ORDER, NON_TERMINAL, deckCounts };
 });

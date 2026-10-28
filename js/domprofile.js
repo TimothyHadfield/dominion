@@ -7,9 +7,10 @@
 (function (root) {
   'use strict';
   // Elo of each level from head-to-head games (tools/measure-levels.js, progress.md):
-  // difference = 400·log10(p / (1 − p)), rounded to 10, Easy anchored at 1200. Ladder of 2026-10-27 (6,000 games a pair):
-  // Medium beats Easy 76.8% (+208), Hard beats Medium 59.9% (+70) and Easy 82.3% (+267): Hard = mean of 1478 and 1467.
-  const LEVELS = [{ id: 'easy', name: 'Easy', rating: 1200 }, { id: 'medium', name: 'Medium', rating: 1410 }, { id: 'hard', name: 'Hard', rating: 1470 }];
+  // difference = 400·log10(p / (1 − p)), rounded to 10, Easy anchored at 1200. Ladder of 2026-10-27 with Hard's
+  // endgame look-ahead (6,000 games a pair): Medium beats Easy 76.8% (+208), Hard beats Medium 63.1% (+93) and
+  // Easy 84.5% (+295): Hard = mean of 1501 and 1495. (Before the look-ahead: 59.9% / 82.3%, Hard 1470.)
+  const LEVELS = [{ id: 'easy', name: 'Easy', rating: 1200 }, { id: 'medium', name: 'Medium', rating: 1410 }, { id: 'hard', name: 'Hard', rating: 1500 }];
   const RANK = { easy: 0, medium: 1, hard: 2 };
 
   const won = c => !!(c.last && c.last.won);

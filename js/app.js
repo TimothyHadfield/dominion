@@ -12,7 +12,7 @@
   const COLORS = ['#f0b354', '#6ea8fe', '#e98bd0', '#6ee7a8'];
   const LEVEL_NOTE = { easy: 'Big Money', medium: 'Money + 1 card', hard: 'Best plan' };
   // Measured by tools/measure-levels.js 100 60 (100 random kingdoms x 60 games per pairing), 2026-10-19.
-  const STRENGTH_NOTE = { games: '6,000', hardEasy: '82%', hardMedium: '60%', mediumEasy: '77%' }; // tools/measure-levels.js 100 60, 2026-10-27
+  const STRENGTH_NOTE = { games: '6,000', hardEasy: '85%', hardMedium: '63%', mediumEasy: '77%' }; // tools/measure-levels.js 100 60, 2026-10-27 (Hard look-ahead)
 
   // ------------------------------------------------------------------ storage
   function fresh() {
@@ -40,6 +40,8 @@
     try {
       const keys = Object.keys(store.plans);
       if (keys.length > 40) for (const k of keys.slice(0, keys.length - 40)) delete store.plans[k];
+      // Hard's worked-out endgame choices travel with the game, so reopening it doesn't redo the look-ahead
+      if (store.game && store.game.state && DomBots.lookSave) store.game.look = DomBots.lookSave(store.game.state.setup.seed);
       localStorage.setItem(KEY, JSON.stringify(store));
     } catch (e) { /* storage full or blocked: keep playing */ }
   }
@@ -63,7 +65,7 @@
   function getWorker() {
     if (worker !== null) return worker;
     try {
-      worker = new Worker('js/worker.js?v=4');
+      worker = new Worker('js/worker.js?v=5');
       worker.onmessage = e => {
         const w = waiting[e.data.id];
         if (!w) return;
@@ -110,6 +112,7 @@
 
   let table = null;
   if (store.game && store.game.state) {
+    try { if (DomBots.lookLoad) DomBots.lookLoad(store.game.state.setup.seed, store.game.look); } catch (e) { /* old save */ }
     try { table = new LocalTable(store.game.state); table.view(ME); } catch (e) { table = null; store.game = null; save(); }
   }
 
@@ -1392,6 +1395,7 @@
     const st = s2.game && s2.game.state;
     const cur = table && table.state;
     if (st && cur && st.setup.seed === cur.setup.seed && st.actions.length === cur.actions.length) return;
+    try { if (st && DomBots.lookLoad) DomBots.lookLoad(st.setup.seed, s2.game.look); } catch (err) { /* ignore */ }
     try { if (st) new LocalTable(st).view(ME); } catch (err) { return; }
     store.game = s2.game || null; store.last = s2.last || store.last;
     table = st ? new LocalTable(st) : null;

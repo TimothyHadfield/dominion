@@ -71,4 +71,60 @@ t('the supply is not changed by smartBuy', () => {
   assert.strictEqual(JSON.stringify(g.supply), before);
 });
 
+// ---- endgame look-ahead (rollouts) ----
+// Both decks are all Gold ($8+ every turn). 2 Provinces left, B leads by 2.
+// Province now: A +4, B takes the last one and wins. Duchy now: A +1, B takes one (1 left), A ends it on the last and wins.
+const golds = (prov, estate) => Array(prov).fill('Province').concat(Array(estate).fill('Estate'), Array(12).fill('Gold'));
+const race = () => {
+  const r = pos({ a: golds(3, 0), b: golds(3, 2), supply: { Province: 2 }, coins: 8 });
+  const b = r.g.players[1];
+  b.hand = b.draw.splice(-5); // B holds its next hand, as in a real game
+  return r;
+};
+
+t('look-ahead: does not take the second-last Province when that hands the rival the win', () => {
+  const { g, p } = race();
+  assert.strictEqual(B.chooseBuy(plan, g, p), 'Province', 'baseline: the plain plan takes it');
+  assert.strictEqual(B.chooseBuy(hard, g, p), 'Duchy');
+});
+
+t('look-ahead: same position, same choice (replays agree), and the game is not touched', () => {
+  const a = race(), b = race();
+  const snap = x => JSON.stringify([x.g.supply, x.g.players.map(o => [o.draw, o.hand, o.discard, o.play, o.turns]), x.g.coins, x.g.buys]);
+  const before = snap(a), r0 = a.g.rand();
+  const a2 = race(); // a's generator after one draw from rand, for comparison
+  const c1 = B.chooseBuy(hard, a2.g, a2.p);
+  assert.strictEqual(snap(a2), before, 'game state unchanged');
+  assert.strictEqual(a2.g.rand(), r0, 'the game\'s own shuffle stream is not used');
+  assert.strictEqual(B.chooseBuy(hard, b.g, b.p), c1);
+});
+
+t('games saved before the look-ahead (smart flag only) replay exactly as before', () => {
+  const { g, p } = race();
+  const old = Object.assign({}, plan, { smart: true });
+  assert.strictEqual(B.chooseBuy(old, g, p), 'Province');
+});
+
+t('a whole game with Hard replays to the same result, quickly the second time, and its choices can be saved', () => {
+  const k = ['Cellar', 'Market', 'Militia', 'Mine', 'Moat', 'Remodel', 'Smithy', 'Village', 'Witch', 'Gardens'];
+  const setup = { seed: 9091, kingdom: k, edition: 2, first: 0, players: [{ name: 'H', bot: S.hardFor(S.withCard('Witch', 2, true, true)) }, { name: 'M', bot: S.mediumFor(k) }] };
+  let t = Date.now();
+  const a = E.materialize(E.newGame(setup)); const t1 = Date.now() - t;
+  t = Date.now();
+  const b = E.materialize({ v: 1, setup: JSON.parse(JSON.stringify(setup)), actions: [] }); const t2 = Date.now() - t;
+  assert.deepStrictEqual(b.result, a.result);
+  const saved = B.lookSave(9091);
+  assert.ok(Object.keys(saved).length > 0, 'the look-ahead ran and its choices are listed');
+  for (const v of Object.values(saved)) assert.ok(v === null || typeof v === 'string');
+  assert.ok(t2 * 2 < t1 + 20, 'replay ' + t2 + ' ms vs first play ' + t1 + ' ms');
+  B.lookLoad(9091, { bogus: 'Not a card', other: 'Province' }); // junk in a saved game is ignored or checked before use
+  const c = E.materialize({ v: 1, setup: JSON.parse(JSON.stringify(setup)), actions: [] });
+  assert.deepStrictEqual(c.result, a.result);
+});
+
+t('look-ahead stays off for plain (Easy/Medium) plans and early in the game', () => {
+  const { g, p } = pos({ a: golds(0, 3), b: golds(0, 3), supply: { Province: 8 }, coins: 8 });
+  assert.strictEqual(B.chooseBuy(hard, g, p), B.chooseBuy(plan, g, p));
+});
+
 console.log(passed + ' smart tests passed' + (process.exitCode ? ' (with failures)' : ''));
