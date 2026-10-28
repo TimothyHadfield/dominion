@@ -15,7 +15,7 @@
   const END_T = [{ card: 'Province', minMoney: 16 }, { card: 'Province', prov: 4 }, { card: 'Duchy', prov: 4 }, { card: 'Estate', prov: 2 }];
   // Victory cards that do nothing else (Gardens, Duke) can't be 'Big Money + X'; Mill, Nobles, Farm can
   const pureVictory = x => is(x, 'Victory') && !is(x, 'Action') && !is(x, 'Treasure');
-  const plural = x => (/y$/.test(x) ? x.slice(0, -1) + 'ies' : /(ch|sh|s)$/.test(x) ? x + 'es' : x + 's');
+  const plural = x => (x === 'Nobles' ? x : /y$/.test(x) ? x.slice(0, -1) + 'ies' : /(ch|sh|s)$/.test(x) ? x + 'es' : x + 's');
   function bigMoney() {
     return { id: 'bm', label: 'Big Money', buy: END.concat([{ card: 'Gold' }, { card: 'Duchy', prov: 6 }, { card: 'Silver' }]) };
   }

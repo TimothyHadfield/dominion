@@ -1,5 +1,11 @@
 # Dominion Lab — chat log
 
+## 2026-10-28 — wave 3 (manager brief)
+- **Asked:** "Just make the games better" — Videos in Rules, Intrigue 2nd ed. as an optional set, readable Supply at 320x460, practical settings.
+- **Built:** 26 Intrigue cards (cards/engine/bots/sim/art/app), Settings → Kingdom cards, choice buttons, Wishing Well naming, Bridge-aware tiles; Videos + Intrigue rules sections; Supply name chips at 320x460; "Ask before ending a turn". Versions bumped, pwa data-version 15, app 1.1.
+- **Verified:** intrigue 32 (30 failed first), engine 26, edge 15, fx 14, profile 6, smart 12, online 7, pwa-check 18/18. Ladder intrigue 78.7/58.4/74.3, both 83.0/60.0/75.4. Headless WebKit shots at 393x659, 320x460, 659x393, 1280x800, 1440x900: no overflow or console errors; buttons click-tested.
+- **Open:** see NOT verified (wave 3 line).
+
 ## 2026-10-19 — first build + phase 2
 - **Asked:** "do dominion" (base game vs computers, odds, best plan per kingdom, randomizer, Study). Phase 2: online play, exact rules and variants, ideas, art and design, no errors.
 - **Decided:** generator-replay engine; computer levels from measured plans; Gardens rush fixed; 1st / 2nd / Both editions in Settings; online through the shared `_online` module.
