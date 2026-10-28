@@ -2,7 +2,7 @@
 
 ## START HERE
 Read order: this file → CLAUDE.md → docs/rules-check.md → docs/ideas.md → chat.md.
-Last updated: 2026-10-27 (improvement pass: stronger Hard, Undo, Daily, My stats, guided game + Rules, home-screen install, art + key moments).
+Last updated: 2026-10-27 (Hard 2nd pass: endgame look-ahead; before that the improvement pass: Undo, Daily, My stats, guided game + Rules, install, art).
 Live: https://timothyhadfield.github.io/dominion/ · Repo: https://github.com/TimothyHadfield/dominion
 
 ## Goal right now
@@ -12,7 +12,7 @@ Dominion base game (1st + 2nd edition) vs 1–3 computers or online friends, wit
 | Part | State |
 |---|---|
 | Engine (all 39 base cards, both editions, 2–4 players) | Done. 26 engine tests. |
-| Computers Easy / Medium / Hard | Done, measured 2026-10-27 (`node tools/measure-levels.js 100 60`, 6,000 games a pair): Hard beats Easy 82.3%, Medium 59.9% (was 55.3%); Medium beats Easy 76.8%. Ratings 1200 / 1410 / 1470. Hard = plan search v2 + endgame sense (`smart`: never ends the game on a losing buy, takes a winning game-ending buy). Target 65% vs Medium NOT reached. |
+| Computers Easy / Medium / Hard | Done, measured 2026-10-27 (`node tools/measure-levels.js 100 60`, 6,000 games a pair): Hard beats Easy 84.5% (was 82.3%), Medium 63.1% (was 59.9%, 55.3% before that); Medium beats Easy 76.8%. Ratings 1200 / 1410 / 1500. Hard = plan search v2 + endgame sense (`smart`) + endgame look-ahead (`look`: bots.js rollBuy, rollouts once ≤3 Provinces left or 2 piles ≤2). Decision time on the laptop: avg 45 ms, max 115 ms (2 players) / 165 ms (4 players, 3 Hard). Target 65% vs Medium NOT reached. |
 | Improvement pass (2026-10-27) | Undo in your own turn until something new shows (not Daily/guided; game counts "with help"); Daily kingdom vs Hard (same kingdom + shuffles for everyone, local best + streak); My stats + 10 achievements (`_profile` 1.1.0, js/domprofile.js); guided first game (9 steps) + Rules sheet (`_coach`, js/domcoach.js); home-screen install + offline (`_pwa` 1.2.0, pwa-check 18/18); fx.js re-copied; art finish (clouds/stars/sun, coin shine, vignette); Province chime, pile-out flash, last-2-Provinces pulse; laptop card box shows the hovered pile, else the sim's buy or last card bought. |
 | Odds bar + deck tracker | Done (exact math). |
 | Kingdom tab: presets, Random, swap, card %, best plan, opening | Done. Plan finder runs in a Web Worker. |
@@ -93,9 +93,10 @@ Other players' sounds play at 0.75 volume. A whole computer turn is spaced out o
 - Overlays (log sheet, Quit confirm, "?" bubble) push a history state; Back closes them first (`ui.skipPop` when closed by hand). Don't remove the pushState in `sheet()`.
 - `window.DomApp.ui` is exposed for tests only (also startGame, startDaily, startTutorial, undo, canUndo, openRules, openStats).
 - Hard's plan cache key ends `#v<DomSim.PLAN_V>`; boot drops other versions. Bump PLAN_V when the plan search changes. Saved games keep the plan in their setup, so old games replay the same; the `smart` flag is added only in startGame (`DomSim.hardFor`), never to old setups. Online Hard (online-game.js) still gets the plain plan.
+- **Hard's look-ahead must replay identically.** Bots answer inside the engine and saved games replay, so `rollBuy` is deterministic: seeds from setup.seed + turn, a budget of simulated *turns* (never the clock), never touches `g.rand`. Changing `ROLL` numbers (bots.js) changes old games' replays: give the new behaviour a new flag value (e.g. `look: 2`) and keep the old one. Saved games without `look` never run it. Chosen buys are memoised and saved as `store.game.look` (`DomBots.lookSave/lookLoad`), so Undo/reopen don't redo the rollouts (reload of a late 4-player game: 9 ms in WebKit). A full ladder with the look-ahead takes ~33 min per half: split kingdoms over 2 node jobs (scratchpad improve/dominion/h2/ladder.js).
 - Undo: `infoPrint` = turn + turn count + last log line by another player + every opponent's pile sizes + my draw size. Any change = new information = undo stack cleared. A Moat reveal moves no cards: the log line is what catches it (fixed 10-27; 257/257 leaks before, 0 after).
 - Kit copies, never edit here: js/profile.js + css/profile.css (`_profile`), js/coach.js + css/coach.css (`_coach`), js/pwa.js + sw.js + tools/make-icons.mjs + tools/pwa-check.mjs (`_pwa`). All `-text` in .gitattributes. Bump `data-version` on pwa.js with every release.
-- Tests: `node tests/engine.test.js` (26), `edge` (15), `smart` (7), `profile` (6), `fx` (14), `node tests/online.test.mjs` (7), `node tools/pwa-check.mjs` (18). Browser flow checks: scratchpad improve/dominion/flows.mjs (19) and moat.mjs.
+- Tests: `node tests/engine.test.js` (26), `edge` (15), `smart` (12, ~2 s), `profile` (6), `fx` (14), `node tests/online.test.mjs` (7), `node tools/pwa-check.mjs` (18). Browser flow checks: scratchpad improve/dominion/flows.mjs (19) and moat.mjs.
 - Guided game = DomCoach.GAME (seed 1: you open $4 then $3). Coach step titles are read by `.coach-title`.
 - Playwright WebKit `touchscreen.tap` waits ~1 s per tap: test real double taps with two dispatched clicks 70 ms apart.
 - My hand's DOM order = engine hand order (taps, deal motion); only positions are grouped (`handGroups` + `groupFan` override the TABLE.fan api's `layout`, which its ResizeObserver calls). The chosen copy goes on top of its stack, so `onHand` maps a tap on any copy of the chosen card to the chosen index (else a second tap on a lower copy reselected forever). Picking several cards (Militia, Cellar, Chapel) uses the loose layout: every copy gets its own room.
@@ -112,12 +113,13 @@ Other players' sounds play at 0.75 volume. A whole computer turn is spaced out o
 - Design pass: selection = orange outline + glow, no movement; unaffordable tiles greyed; laptop info box height = big card height so picking a card never resizes it.
 - 5–6 players and holding back Treasures not supported (see docs/rules-check.md). Still so after the 10-27 pass: 5–6 needs the Base Cards box (Tim's call).
 - Hard v2 (10-27): adds "Big Money + 2 X, early" plans (X before Gold, 2nd copy at 11 cards; from per-card tuning: Witch 64% → 77% vs BM+Witch) and finalists also play Medium's plan. Tried and dropped: Monte Carlo rollout buys (42.7% vs Medium, 2.3 s a game), v3 finalists picked vs Medium (60.6%, no gain).
+- Hard 2nd pass (10-27): endgame-only rollouts with successive halving (24 each, +96 for the top two, pruned candidates) = +3.2 vs Medium. Measured and not used: rollouts from 6 Provinces left (worse than from 3–4), an oracle that picks each kingdom's plan by 200 games vs Medium (59.4%: plan choice is saturated), terminal + cantrip plan families like 2 Witches + Labs (+≤1.8, biased upper bound; not worth the plan-search time on phones).
 - Stats: games vs computer are rated; Undo games = "With help" (unrated); quitting mid-game = loss; guided and online games never count; a game left with no turn played is not counted.
 
 ## NOT verified
 - A real iPhone (only Safari's engine at 393px via phone-view).
 - Online with 3–4 humans at once (tested 2 humans; computers fill other seats in node tests).
-- Hard beats Medium 60%, under the 65% target. Medium is already Big Money + the best card, so the gap is small; retuning Medium down is Tim's call.
+- Hard beats Medium 63%, under the 65% target. Medium is already Big Money + the best card, so the gap is small; retuning Medium down is Tim's call. Look-ahead timing measured on the laptop only (node + headless WebKit: worst human move incl. 3 Hard turns 462 ms); not timed on a real iPhone.
 - Improvement pass (10-27): Daily streak across real days, PWA install on a real iPhone, and the new sounds (chime, thud) never heard. 320x460 game screen has tiny supply tiles (same as before the pass).
 - Sounds never heard: Playwright WebKit on Windows has no Web Audio; sound logic verified with a fake AudioContext in node only. Online fx (other humans' moves) verified by node diff tests, not in two live browsers.
 - Real-table look: an outside reviewer ran in the edge pass (2026-10-20); its layout bugs were fixed. Its pure-style ideas (plaque buttons, no dimmed cards, bigger played cards, phone Trash pile, hide tabs in game) were left for Tim. Online table not shot in two live browsers (online node tests pass; same render path).
