@@ -537,7 +537,7 @@
     if (!DC || !tour || table || ui.online || ui.tab !== 'play' || COACH.offered(DC.ID)) return;
     setTimeout(() => {
       if (table || ui.online || ui.tab !== 'play') return;
-      COACH.offer({ id: DC.ID, title: 'New to Dominion?', text: 'Play one guided game against the Easy computer.', yes: 'Teach me', no: 'No thanks', onYes: startTutorial });
+      COACH.offer({ id: DC.ID, title: 'New to Dominion?', text: 'Play one guided game against the Easy computer.', yes: 'Teach me', no: 'No thanks', onYes: startTutorial, place: 'auto', avoid: ['[data-start]'] });
     }, 600);
   }
   function dailyDone() {

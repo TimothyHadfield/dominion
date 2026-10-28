@@ -1,5 +1,7 @@
 # Dominion Lab — chat log
 
+## 2026-10-28 — kit sweep 2: coach 1.2.0 (offer avoids Deal + tab bar), pwa 1.4.0 (data-version 16); all suites + pwa-check 18/18 green; offer rects measured at 3 sizes.
+
 ## 2026-10-28 — wave 3 (manager brief)
 - **Asked:** "Just make the games better" — Videos in Rules, Intrigue 2nd ed. as an optional set, readable Supply at 320x460, practical settings.
 - **Built:** 26 Intrigue cards (cards/engine/bots/sim/art/app), Settings → Kingdom cards, choice buttons, Wishing Well naming, Bridge-aware tiles; Videos + Intrigue rules sections; Supply name chips at 320x460; "Ask before ending a turn". Versions bumped, pwa data-version 15, app 1.1.
