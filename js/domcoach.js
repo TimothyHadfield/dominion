@@ -34,6 +34,20 @@
       { id: 'end', title: 'Game end', short: 'End', html:
         '<p>The game ends after the turn in which the <b>last Province</b> is bought, or <b>any 3 Supply piles</b> are empty (kingdom cards count too).</p>' +
         '<p>Count your points. Most VP wins. On a tie, the player who had fewer turns wins; still tied, they share the win.</p>' },
+      { id: 'intrigue', title: 'Intrigue cards', short: 'Intrigue', html:
+        '<p>Settings → Card set can add the 26 cards of the Intrigue expansion (2nd edition): base only (the default), base + Intrigue, or Intrigue only. They use the same Supply and rules.</p>' +
+        '<ul><li><b>Choices</b>: many Intrigue cards say "pick one" (Steward, Nobles, Minion) or "pick two" (Pawn). You may pick an option you can\'t fully do; you do as much as you can.</li>' +
+        '<li><b>Victory cards that do things</b>: Mill and Nobles are Actions, Farm is a Treasure, and all three are worth points. Duke is worth 1 point per Duchy you own.</li>' +
+        '<li><b>Attacks</b>: Swindler, Minion, Replace and Torturer. Moat still blocks them; Diplomat lets you draw 2 and discard 3 first when you hold 5 or more cards.</li>' +
+        '<li><b>Bridge</b>: everything costs $1 less for the rest of your turn, including what other cards let you gain.</li></ul>' },
+      { id: 'videos', title: 'Videos', short: 'Videos', html:
+        '<p>Short videos from YouTube (they open in a new tab):</p>' +
+        '<ul>' +
+        '<li><a href="https://www.youtube.com/watch?v=5jNGpgdMums" target="_blank" rel="noopener">How to Play Dominion in 3 Minutes</a> · The Rules Girl</li>' +
+        '<li><a href="https://www.youtube.com/watch?v=z1tBKvyJruA" target="_blank" rel="noopener">How To Win Dominion: Early Game (Part 1)</a> · Hardy House Games</li>' +
+        '<li><a href="https://www.youtube.com/watch?v=Ad3_zG3yOBo" target="_blank" rel="noopener">How To Win Dominion: Mid/Late Game (Part 2)</a> · Hardy House Games</li>' +
+        '<li><a href="https://www.youtube.com/watch?v=z7BxZRAta4s" target="_blank" rel="noopener">How to play Dominion and Dominion: Intrigue</a> · Teach The Table</li>' +
+        '</ul>' },
       { id: 'site', title: 'This site', short: 'Site', html:
         '<ul><li><b>Odds bar</b>: your chance of $5, $6 and $8 next hand, worked out exactly from your deck.</li>' +
         '<li><b>Buy hints</b>: a green dot on what the simulator would buy (Settings).</li>' +
